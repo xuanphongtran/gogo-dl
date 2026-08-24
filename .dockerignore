@@ -1,0 +1,17 @@
+# Git
+.git
+.gitignore
+
+# Build output
+bin/
+
+# Local env file — never bake secrets into the image
+configs/.env
+
+# Editor / OS noise
+.DS_Store
+*.swp
+*.swo
+
+# Test cache
+**/*_test.go

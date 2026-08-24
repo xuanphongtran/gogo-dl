@@ -1,0 +1,42 @@
+# ── Binaries ──────────────────────────────────────────────────────────────────
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# ── Test & coverage ───────────────────────────────────────────────────────────
+*.test
+*.out
+coverage.html
+coverage.txt
+
+# ── Go build cache ────────────────────────────────────────────────────────────
+/vendor/
+
+# ── Env / secrets — NEVER commit these ───────────────────────────────────────
+configs/.env
+.env
+.env.*
+!.env.example
+!configs/.env.example
+
+# ── Air (hot-reload) ──────────────────────────────────────────────────────────
+tmp/
+.air.toml
+
+# ── Editor / IDE ──────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+# (docker-compose.yml và Dockerfile được commit, override files thì không)
+docker-compose.override.yml
