@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package api.v1;
+
+option go_package = "github.com/xuanphongtran/gogo-dl/gen/api/v1;apiv1";
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+service UserService {
+  rpc Register(RegisterRequest) returns (TokenPair);
+  rpc Login(LoginRequest) returns (TokenPair);
+  rpc RefreshTokens(RefreshTokensRequest) returns (TokenPair);
+  rpc GetMe(google.protobuf.Empty) returns (ProfileResponse);
+  rpc UpdateMe(UpdateProfileRequest) returns (ProfileResponse);
+  rpc DeleteMe(google.protobuf.Empty) returns (google.protobuf.Empty);
+}
+
+message RegisterRequest {
+  string username = 1;
+  string email = 2;
+  string password = 3;
+}
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message RefreshTokensRequest {
+  string refresh_token = 1;
+}
+
+message TokenPair {
+  string access_token = 1;
+  string refresh_token = 2;
+  int64 expires_at = 3;
+}
+
+message ProfileResponse {
+  int64 id = 1;
+  string username = 2;
+  string email = 3;
+  string avatar_url = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+
+message UpdateProfileRequest {
+  optional string username = 1;
+  optional string avatar_url = 2;
+}

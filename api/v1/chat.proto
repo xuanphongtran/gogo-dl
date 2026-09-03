@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+package api.v1;
+
+option go_package = "github.com/xuanphongtran/gogo-dl/gen/api/v1;apiv1";
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+service ChatService {
+  rpc CreateRoom(CreateRoomRequest) returns (Room);
+  rpc ListRooms(google.protobuf.Empty) returns (ListRoomsResponse);
+  rpc GetRoom(GetRoomRequest) returns (Room);
+  rpc JoinRoom(JoinRoomRequest) returns (google.protobuf.Empty);
+  rpc SendMessage(SendMessageRequest) returns (Message);
+  rpc ListMessages(ListMessagesRequest) returns (ListMessagesResponse);
+  rpc StreamMessages(StreamMessagesRequest) returns (stream Message);
+}
+
+message Room {
+  int64 id = 1;
+  string name = 2;
+  int64 created_by = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message Message {
+  int64 id = 1;
+  int64 room_id = 2;
+  int64 user_id = 3;
+  string username = 4;
+  string content = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message CreateRoomRequest {
+  string name = 1;
+}
+
+message ListRoomsResponse {
+  repeated Room rooms = 1;
+}
+
+message GetRoomRequest {
+  int64 id = 1;
+}
+
+message JoinRoomRequest {
+  int64 room_id = 1;
+}
+
+message SendMessageRequest {
+  int64 room_id = 1;
+  string content = 2;
+}
+
+message ListMessagesRequest {
+  int64 room_id = 1;
+  int32 limit = 2;
+  int64 before = 3;
+}
+
+message ListMessagesResponse {
+  repeated Message messages = 1;
+}
+
+message StreamMessagesRequest {
+  int64 room_id = 1;
+}

@@ -16,7 +16,9 @@ MIGRATIONS_DIR := migrations
 # ── Phony targets ──────────────────────────────────────────────────────────────
 .PHONY: all run build clean test lint \
         migrate-up migrate-down migrate-create \
-        deps tidy docker-up docker-down
+        deps tidy docker-up docker-down \
+        proto-gen proto-clean proto-tools \
+        buf-lint buf-breaking
 
 # Default target
 all: build
@@ -105,6 +107,54 @@ docker-build:
 ## docker-logs: Tail logs from all services
 docker-logs:
 	docker compose logs -f
+
+# ── Protobuf / ConnectRPC code generation ──────────────────────────────────────
+
+PROTO_DIR  := api
+GEN_DIR    := gen
+
+## proto-tools: Install protoc-gen-go + protoc-gen-connect-go locally (to ./bin)
+proto-tools:
+	@echo "→ Installing protoc plugins to $(BUILD_DIR)/"
+	@mkdir -p $(BUILD_DIR)
+	@GOBIN=$(abspath $(BUILD_DIR)) go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+	@GOBIN=$(abspath $(BUILD_DIR)) go install connectrpc.com/connect/cmd/protoc-gen-connect-go@latest
+	@echo "✓ protoc-gen-go and protoc-gen-connect-go installed in $(BUILD_DIR)/"
+	@echo "  Ensure $(abspath $(BUILD_DIR)) is in $$PATH for protoc, or use make proto-gen"
+
+PROTO_INCLUDE ?= $(BUILD_DIR)/protoc_extracted/include
+
+## proto-gen: Generate Go + Connect code from .proto files (requires protoc + plugins)
+proto-gen:
+	@echo "→ Generating protobuf + ConnectRPC code..."
+	@mkdir -p $(GEN_DIR)
+	@PATH="$(abspath $(BUILD_DIR)):$$PATH" protoc \
+		--proto_path=. \
+		--proto_path=$(PROTO_INCLUDE) \
+		--go_out=$(GEN_DIR) --go_opt=paths=source_relative \
+		--connect-go_out=$(GEN_DIR) --connect-go_opt=paths=source_relative \
+		$$(find $(PROTO_DIR) -name "*.proto" -print)
+	@echo "✓ Generated files in $(GEN_DIR)/"
+
+## proto-gen-buf: Alternative codegen using buf.build (install: https://buf.build)
+proto-gen-buf:
+	@echo "→ Running buf generate..."
+	@mkdir -p $(GEN_DIR)
+	@buf generate
+	@echo "✓ Generated files in $(GEN_DIR)/ via buf"
+
+## proto-clean: Remove all generated proto/connect files
+proto-clean:
+	rm -rf $(GEN_DIR)
+	@echo "✓ Cleaned $(GEN_DIR)/"
+
+## buf-lint: Lint .proto files with buf
+buf-lint:
+	buf lint
+
+## buf-breaking: Check for breaking changes between current and last committed .proto
+buf-breaking:
+	buf breaking --against '.git#branch=main'
 
 # ── Help ───────────────────────────────────────────────────────────────────────
 help:

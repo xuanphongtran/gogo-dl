@@ -248,15 +248,16 @@ func (h *Hub) removeFromRoom(roomID string, c *Client) {
 }
 
 // fanOut sends msg to every client in roomID, optionally excluding one client (excludeID).
+// Also dispatches to ConnectRPC stream subscribers registered via RegisterStreamSubscriber.
 func (h *Hub) fanOut(roomID string, msg Message, excludeID string) {
 	members, ok := h.rooms[roomID]
-	if !ok {
-		return
-	}
-	for id, client := range members {
-		if id == excludeID {
-			continue
+	if ok {
+		for id, client := range members {
+			if id == excludeID {
+				continue
+			}
+			client.sendJSON(msg)
 		}
-		client.sendJSON(msg)
 	}
+	dispatchStreamSubs(roomID, msg)
 }
