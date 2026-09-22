@@ -22,7 +22,7 @@ type fakeChatRepository struct {
 }
 
 func (f *fakeChatRepository) CreateRoom(_ context.Context, room *Room) error {
-	return f.CreateRoomWithMember(nil, room, room.CreatedBy)
+	return f.CreateRoomWithMember(context.TODO(), room, room.CreatedBy)
 }
 
 func (f *fakeChatRepository) CreateRoomWithMember(_ context.Context, room *Room, userID int64) error {

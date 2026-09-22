@@ -114,6 +114,21 @@ func (h *Hub) sendProtocolError(client *Client, roomID, code, message string) {
 	})
 }
 
+func (h *Hub) sendProtocolErrorAndClose(client *Client, roomID, code, message string, closed chan struct{}) {
+	if client == nil {
+		close(closed)
+		return
+	}
+	client.sendJSONAndClose(Message{
+		Type:   EventError,
+		RoomID: roomID,
+		Payload: map[string]string{
+			"code":    code,
+			"message": message,
+		},
+	}, closed)
+}
+
 func parseRoomID(raw string) (int64, string, error) {
 	roomID, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil || roomID <= 0 {

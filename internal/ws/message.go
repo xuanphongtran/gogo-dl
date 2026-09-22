@@ -35,4 +35,12 @@ type inboundMessage struct {
 	UserID    int64
 	Message   Message
 	ErrorCode string
+	handled   chan struct{}
+	closed    chan struct{}
+}
+
+type outboundMessage struct {
+	data       []byte
+	closeAfter bool
+	closed     chan struct{}
 }

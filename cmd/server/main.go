@@ -65,7 +65,13 @@ func main() {
 	log.Info().Msg("migrations up to date")
 
 	// ── 4. WebSocket Hub ──────────────────────────────────────────────────────
-	hub := ws.New()
+	hub := ws.New(ws.Options{
+		AllowedOrigins:        cfg.WSAllowedOrigins,
+		AllowMissingOrigin:    cfg.WSAllowMissingOrigin,
+		MaxMessageBytes:       cfg.WSMaxMessageBytes,
+		MaxConnections:        cfg.WSMaxConnections,
+		MaxConnectionsPerUser: cfg.WSMaxConnectionsPerUser,
+	})
 
 	// ── 5. Dependency wiring (manual DI, no framework) ───────────────────────
 

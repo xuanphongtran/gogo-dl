@@ -20,13 +20,17 @@ func (e *AppError) Error() string { return e.Message }
 
 // Common errors
 var (
-	ErrUnauthorized     = &AppError{Code: http.StatusUnauthorized, Message: "unauthorized"}
-	ErrForbidden        = &AppError{Code: http.StatusForbidden, Message: "forbidden"}
-	ErrNotFound         = &AppError{Code: http.StatusNotFound, Message: "not found"}
-	ErrConflict         = &AppError{Code: http.StatusConflict, Message: "resource already exists"}
-	ErrAccountOwnsRooms = &AppError{Code: http.StatusConflict, Message: "cannot delete account while owning rooms"}
-	ErrBadRequest       = &AppError{Code: http.StatusBadRequest, Message: "bad request"}
-	ErrInternal         = &AppError{Code: http.StatusInternalServerError, Message: "internal server error"}
+	ErrUnauthorized        = &AppError{Code: http.StatusUnauthorized, Message: "unauthorized"}
+	ErrForbidden           = &AppError{Code: http.StatusForbidden, Message: "forbidden"}
+	ErrNotFound            = &AppError{Code: http.StatusNotFound, Message: "not found"}
+	ErrConflict            = &AppError{Code: http.StatusConflict, Message: "resource already exists"}
+	ErrAccountOwnsRooms    = &AppError{Code: http.StatusConflict, Message: "cannot delete account while owning rooms"}
+	ErrBadRequest          = &AppError{Code: http.StatusBadRequest, Message: "bad request"}
+	ErrInvalidRequest      = &AppError{Code: http.StatusBadRequest, Message: "invalid request"}
+	ErrRequestBodyTooLarge = &AppError{Code: http.StatusRequestEntityTooLarge, Message: "request body too large"}
+	ErrOriginForbidden     = &AppError{Code: http.StatusForbidden, Message: "origin forbidden"}
+	ErrRateLimited         = &AppError{Code: http.StatusTooManyRequests, Message: "rate limit exceeded"}
+	ErrInternal            = &AppError{Code: http.StatusInternalServerError, Message: "internal server error"}
 )
 
 // New creates a new AppError with the given status code and message.

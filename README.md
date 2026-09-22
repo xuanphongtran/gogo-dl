@@ -92,6 +92,8 @@ go run ./cmd/server/main.go
 
 Server starts on `http://localhost:8080` by default.
 
+For internet-facing deployments, set `WS_ALLOWED_ORIGINS` to comma-separated exact `http://` or `https://` origins. Production rejects missing origins unless explicitly configured otherwise in a controlled environment. HTTP bodies, headers, WebSocket frames, connections, and in-process request rates are bounded by the `HTTP_*`, `WS_*`, `*_RATE_*`, and `*_BURST` settings in `configs/.env.example`.
+
 ---
 
 ## API Reference
@@ -111,6 +113,10 @@ Server starts on `http://localhost:8080` by default.
 | GET    | `/api/v1/users/me` | ✓    | Get my profile         |
 | PATCH  | `/api/v1/users/me` | ✓    | Update my profile      |
 | DELETE | `/api/v1/users/me` | ✓    | Delete my account      |
+
+Profile updates accept an avatar URL only when it is an absolute `http://` or
+`https://` URL. Other schemes, including `file://`, `ftp://`, and
+`javascript:`, are rejected.
 
 ### Rooms
 
@@ -208,3 +214,5 @@ Clients should proactively refresh before the access token expires (`expires_at`
 - Client-originated message and lifecycle events are rejected; durable messages are persisted through the chat service before broadcast.
 - Membership revocation removes active room subscriptions after the membership transaction commits and the Hub processes the control event.
 - If an account is deleted, authored message history is retained with a nullable `user_id` and the username `[deleted user]`.
+- WebSocket upgrades require an exact configured Origin and are subject to global/per-user connection admission and per-connection frame limits.
+- Invalid JSON/request semantics return stable `invalid request` errors; oversized HTTP bodies return `request body too large`, and exhausted limiters return `rate limit exceeded` with `Retry-After`.

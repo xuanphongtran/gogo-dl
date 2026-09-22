@@ -51,7 +51,7 @@ func (h *Handler) RegisterRoutes(public, private *gin.RouterGroup) {
 func (h *Handler) Register(c *gin.Context) {
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apperror.Respond(c, apperror.New(http.StatusBadRequest, err.Error()))
+		apperror.Respond(c, middleware.BindingError(err))
 		return
 	}
 
@@ -70,7 +70,7 @@ func (h *Handler) Register(c *gin.Context) {
 func (h *Handler) Login(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apperror.Respond(c, apperror.New(http.StatusBadRequest, err.Error()))
+		apperror.Respond(c, middleware.BindingError(err))
 		return
 	}
 
@@ -91,7 +91,7 @@ func (h *Handler) RefreshTokens(c *gin.Context) {
 		RefreshToken string `json:"refresh_token" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
-		apperror.Respond(c, apperror.New(http.StatusBadRequest, err.Error()))
+		apperror.Respond(c, middleware.BindingError(err))
 		return
 	}
 
@@ -123,7 +123,7 @@ func (h *Handler) UpdateMe(c *gin.Context) {
 
 	var req UpdateProfileRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apperror.Respond(c, apperror.New(http.StatusBadRequest, err.Error()))
+		apperror.Respond(c, middleware.BindingError(err))
 		return
 	}
 

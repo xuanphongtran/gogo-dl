@@ -49,7 +49,7 @@ func readClientMessage(t *testing.T, client *Client) Message {
 	select {
 	case raw := <-client.send:
 		var msg Message
-		if err := json.Unmarshal(raw, &msg); err != nil {
+		if err := json.Unmarshal(raw.data, &msg); err != nil {
 			t.Fatalf("unmarshal client message: %v", err)
 		}
 		return msg
@@ -124,7 +124,7 @@ func TestHubRevokesActiveSubscription(t *testing.T) {
 
 	select {
 	case msg := <-client.send:
-		t.Fatalf("revoked client received room event: %s", msg)
+		t.Fatalf("revoked client received room event: %s", msg.data)
 	case <-time.After(100 * time.Millisecond):
 	}
 }

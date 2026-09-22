@@ -7,10 +7,12 @@ func (c *Client) Context() context.Context {
 	return c.ctx
 }
 
-func (c *Client) enqueueInbound(msg inboundMessage) {
+func (c *Client) enqueueInbound(msg inboundMessage) bool {
 	select {
 	case c.hub.inbound <- msg:
+		return true
 	case <-c.ctx.Done():
 	case <-c.hub.done:
 	}
+	return false
 }

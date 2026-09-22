@@ -72,7 +72,7 @@ func (r *postgresRepository) GetByID(ctx context.Context, id int64) (*User, erro
 // GetByEmail fetches a user by email address (used during login).
 func (r *postgresRepository) GetByEmail(ctx context.Context, email string) (*User, error) {
 	var u User
-	err := r.db.GetContext(ctx, &u, `SELECT id, username, email, password_hash, avatar_url, created_at, updated_at FROM users WHERE email = $1`, email)
+	err := r.db.GetContext(ctx, &u, `SELECT id, username, email, password_hash, avatar_url, created_at, updated_at FROM users WHERE lower(email) = lower($1)`, email)
 	return handleGetErr(&u, err, "user repo GetByEmail")
 }
 

@@ -2,7 +2,7 @@
 
 **Related plan:** [plan/04-api-hardening.md](../plan/04-api-hardening.md)
 **Execution plan:** [plan/04-api-hardening-execution.md](../plan/04-api-hardening-execution.md)
-**Status:** Ready
+**Status:** Done
 **Priority:** P0
 **Depends on:** 01, 02, 03
 
@@ -139,7 +139,7 @@ layer so HTTP and future transports share the same rules.
 | Email | Trim surrounding whitespace; lowercase the canonical value before persistence and lookup; validate standard email shape |
 | Room name | Trim surrounding whitespace; 1–100 Unicode code points; reject control characters |
 | Message content | Trim surrounding whitespace; 1–4000 UTF-8 bytes; reject control characters other than newline, carriage return, and tab |
-| Avatar URL | Preserve the current URL validation and reject control characters |
+| Avatar URL | Require an absolute `http` or `https` URL and reject control characters. Other schemes, including `ftp`, `file`, and `javascript`, are invalid. |
 
 Email lowercasing changes uniqueness semantics. Before enabling it, the
 database migration must detect case-insensitive duplicates and fail with an

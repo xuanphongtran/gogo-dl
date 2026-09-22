@@ -26,8 +26,15 @@ func NewService(repo Repository, hub *ws.Hub) *Service {
 
 // CreateRoom creates a new room and automatically adds the creator as a member.
 func (s *Service) CreateRoom(ctx context.Context, creatorID int64, req *CreateRoomRequest) (*Room, error) {
+	if req == nil {
+		return nil, apperror.ErrInvalidRequest
+	}
+	name, ok := normalizeRoomName(req.Name)
+	if !ok {
+		return nil, apperror.ErrInvalidRequest
+	}
 	room := &Room{
-		Name:      req.Name,
+		Name:      name,
 		CreatedBy: creatorID,
 	}
 	if err := s.repo.CreateRoomWithMember(ctx, room, creatorID); err != nil {
@@ -67,6 +74,14 @@ func (s *Service) JoinRoom(ctx context.Context, roomID, userID int64) error {
 //  3. Call hub.Broadcast(roomID, wsMessage) — non-blocking channel send.
 //     The Hub's Run() goroutine fans the message out to all connected clients.
 func (s *Service) SendMessage(ctx context.Context, userID int64, roomID int64, req *SendMessageRequest, username string) (*Message, error) {
+	if req == nil {
+		return nil, apperror.ErrInvalidRequest
+	}
+	content, ok := normalizeMessageContent(req.Content)
+	if !ok {
+		return nil, apperror.ErrInvalidRequest
+	}
+
 	// Check room exists.
 	if _, err := s.repo.GetRoomByID(ctx, roomID); err != nil {
 		return nil, err
@@ -85,7 +100,7 @@ func (s *Service) SendMessage(ctx context.Context, userID int64, roomID int64, r
 		RoomID:   roomID,
 		UserID:   &userID,
 		Username: username,
-		Content:  req.Content,
+		Content:  content,
 	}
 	if err := s.repo.CreateMessage(ctx, msg); err != nil {
 		return nil, err

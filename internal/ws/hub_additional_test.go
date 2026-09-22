@@ -51,7 +51,7 @@ func TestHubSlowConsumerDoesNotBlockEventLoop(t *testing.T) {
 	sendCommand(hub, client, Message{Type: EventJoin, RoomID: "1"})
 	_ = readClientMessage(t, client)
 	for i := 0; i < cap(client.send); i++ {
-		client.send <- []byte("queued")
+		client.send <- outboundMessage{data: []byte("queued")}
 	}
 
 	if err := hub.Broadcast("1", Message{Type: EventMessage, RoomID: "1"}); err != nil {
@@ -91,7 +91,7 @@ func TestHubLeaveRemovesSubscription(t *testing.T) {
 	}
 	select {
 	case msg := <-client.send:
-		t.Fatalf("left client received room event: %s", msg)
+		t.Fatalf("left client received room event: %s", msg.data)
 	case <-time.After(100 * time.Millisecond):
 	}
 }

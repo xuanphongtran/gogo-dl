@@ -31,8 +31,18 @@ func New(
 	}
 
 	r := gin.New() // use gin.New() so we control which middleware runs
+	if err := r.SetTrustedProxies(nil); err != nil {
+		log.Error().Err(err).Msg("http: disable trusted proxies")
+	}
+
+	authLimiter := middleware.NewRateLimiter(cfg.AuthRatePerMinute, cfg.AuthRateBurst, 4096)
+	preAuthWriteLimiter := middleware.NewRateLimiter(cfg.WriteRatePerMinute, cfg.WriteRateBurst, 4096)
+	writeLimiter := middleware.NewRateLimiter(cfg.WriteRatePerMinute, cfg.WriteRateBurst, 4096)
+	wsLimiter := middleware.NewRateLimiter(cfg.WSRatePerMinute, cfg.WSRateBurst, 4096)
 
 	// ── Global middleware ─────────────────────────────────────────────────────
+	r.Use(middleware.RequestID())
+	r.Use(middleware.RequestBodyLimit(cfg.HTTPMaxBodyBytes))
 	r.Use(middleware.Recover())
 	r.Use(middleware.Logger())
 	r.Use(middleware.CORS(cfg))
@@ -47,22 +57,34 @@ func New(
 
 	// public: routes that don't need authentication
 	public := v1.Group("")
+	public.Use(middleware.RateLimit(authLimiter, middleware.PeerKey))
 
 	// private: routes protected by JWT
 	private := v1.Group("")
+	private.Use(middleware.RateLimitMutations(preAuthWriteLimiter, middleware.PeerKey))
 	private.Use(middleware.Auth(cfg))
+	private.Use(middleware.RateLimitMutations(writeLimiter, middleware.AuthenticatedKey))
 
 	// ── Register domain routes ────────────────────────────────────────────────
 	userHandler.RegisterRoutes(public, private)
 	chatHandler.RegisterRoutes(private)
 
+	// WebSocket upgrades need a peer limit before JWT validation and an
+	// authenticated user+peer limit after validation.
+	wsRoutes := v1.Group("")
+	wsRoutes.Use(middleware.RateLimit(wsLimiter, middleware.PeerKey))
+	wsRoutes.Use(middleware.Auth(cfg))
+	chatHandler.RegisterWebSocketRoute(wsRoutes, middleware.RateLimit(wsLimiter, middleware.WebSocketKey))
+
 	return &Server{
 		httpServer: &http.Server{
-			Addr:         cfg.Addr(),
-			Handler:      r,
-			ReadTimeout:  15 * time.Second,
-			WriteTimeout: 15 * time.Second,
-			IdleTimeout:  60 * time.Second,
+			Addr:              cfg.Addr(),
+			Handler:           r,
+			ReadHeaderTimeout: 5 * time.Second,
+			ReadTimeout:       15 * time.Second,
+			WriteTimeout:      15 * time.Second,
+			MaxHeaderBytes:    cfg.HTTPMaxHeaderBytes,
+			IdleTimeout:       60 * time.Second,
 		},
 	}
 }

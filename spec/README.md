@@ -12,7 +12,7 @@ requirements and verification decisions.
 
 The related execution plans remain in [`plan/`](../plan/). A specification is
 
-Plans 01–03 are Done after verification; Phase 04 is Ready with its implementation specification and execution plan.
+Plans 01–04 are Done after verification; Phase 04 includes its implementation specification and execution plan.
 
 ## Shared constraints
 

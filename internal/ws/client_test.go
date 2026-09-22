@@ -21,7 +21,7 @@ func TestReadPumpReportsPayloadTooLarge(t *testing.T) {
 		if err != nil {
 			return
 		}
-		client := newClient("client-1", 42, conn, hub, context.Background())
+		client := newClient("client-1", 42, conn, hub, context.Background(), 32)
 		serverClient <- client
 		go client.ReadPump()
 	}))
@@ -34,7 +34,7 @@ func TestReadPumpReportsPayloadTooLarge(t *testing.T) {
 	defer conn.Close()
 	<-serverClient
 
-	if err := conn.WriteMessage(websocket.TextMessage, bytes.Repeat([]byte("x"), maxMessageSize+1)); err != nil {
+	if err := conn.WriteMessage(websocket.TextMessage, bytes.Repeat([]byte("x"), 33)); err != nil {
 		t.Fatalf("WriteMessage() error = %v", err)
 	}
 
@@ -43,6 +43,8 @@ func TestReadPumpReportsPayloadTooLarge(t *testing.T) {
 		if msg.ErrorCode != "payload_too_large" {
 			t.Fatalf("inbound error code = %q, want payload_too_large", msg.ErrorCode)
 		}
+		close(msg.handled)
+		close(msg.closed)
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for payload limit error")
 	}

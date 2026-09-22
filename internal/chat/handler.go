@@ -25,7 +25,7 @@ func NewHandler(svc *Service, hub *ws.Hub) *Handler {
 
 // RegisterRoutes attaches all chat routes to the provided router groups.
 // All routes in private require a valid JWT (Auth middleware applied by httpserver).
-func (h *Handler) RegisterRoutes(private *gin.RouterGroup) {
+func (h *Handler) RegisterRoutes(private *gin.RouterGroup, wsMiddleware ...gin.HandlerFunc) {
 	rooms := private.Group("/rooms")
 	{
 		rooms.GET("", h.ListRooms)
@@ -36,8 +36,20 @@ func (h *Handler) RegisterRoutes(private *gin.RouterGroup) {
 		rooms.POST("/:id/messages", h.SendMessage)
 	}
 
-	// WebSocket upgrade endpoint — Auth middleware validates ?token= query param.
-	private.GET("/ws", h.ServeWS)
+	// Keep the optional middleware argument for callers that register the
+	// WebSocket route on the authenticated group. The composition root uses
+	// RegisterWebSocketRoute so pre-auth admission can run before Auth.
+	if len(wsMiddleware) > 0 {
+		h.RegisterWebSocketRoute(private, wsMiddleware...)
+	}
+}
+
+// RegisterWebSocketRoute attaches the authenticated WebSocket upgrade route to
+// the provided group. Callers can place pre-auth middleware on the group and
+// post-auth middleware in wsMiddleware.
+func (h *Handler) RegisterWebSocketRoute(group *gin.RouterGroup, wsMiddleware ...gin.HandlerFunc) {
+	wsRoutes := group.Group("", wsMiddleware...)
+	wsRoutes.GET("/ws", h.ServeWS)
 }
 
 // ListRooms returns all chat rooms.
@@ -56,7 +68,7 @@ func (h *Handler) CreateRoom(c *gin.Context) {
 
 	var req CreateRoomRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apperror.Respond(c, apperror.New(http.StatusBadRequest, err.Error()))
+		apperror.Respond(c, middleware.BindingError(err))
 		return
 	}
 
@@ -114,7 +126,7 @@ func (h *Handler) ListMessages(c *gin.Context) {
 
 	var q ListMessagesQuery
 	if err := c.ShouldBindQuery(&q); err != nil {
-		apperror.Respond(c, apperror.New(http.StatusBadRequest, err.Error()))
+		apperror.Respond(c, middleware.BindingError(err))
 		return
 	}
 
@@ -139,7 +151,7 @@ func (h *Handler) SendMessage(c *gin.Context) {
 
 	var req SendMessageRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apperror.Respond(c, apperror.New(http.StatusBadRequest, err.Error()))
+		apperror.Respond(c, middleware.BindingError(err))
 		return
 	}
 
@@ -177,8 +189,10 @@ func (h *Handler) ServeWS(c *gin.Context) {
 	clientID := fmt.Sprintf("%d-%d", userID, time.Now().UnixNano())
 
 	if err := h.hub.Upgrade(c.Writer, c.Request, clientID, userID); err != nil {
-		// Upgrade already wrote the HTTP error response, just log.
-		apperror.Respond(c, apperror.New(http.StatusInternalServerError, "ws upgrade failed"))
+		// Upgrade writes protocol-specific HTTP errors before the handshake fails.
+		if !c.Writer.Written() {
+			apperror.Respond(c, apperror.New(http.StatusInternalServerError, "ws upgrade failed"))
+		}
 		return
 	}
 	// After Upgrade() the connection is owned by the hub's goroutines.
@@ -191,7 +205,7 @@ func parseRoomID(c *gin.Context) (int64, error) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil || id <= 0 {
-		return 0, apperror.New(http.StatusBadRequest, "invalid room id")
+		return 0, apperror.ErrInvalidRequest
 	}
 	return id, nil
 }

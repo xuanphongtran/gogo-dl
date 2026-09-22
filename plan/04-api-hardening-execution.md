@@ -1,6 +1,6 @@
 # Phase 04 — API Hardening Execution Plan
 
-**Status:** Ready
+**Status:** Done
 **Spec:** [spec/04-api-hardening.md](../spec/04-api-hardening.md)
 **Parent plan:** [04 — API and Abuse Protection](./04-api-hardening.md)
 
@@ -149,6 +149,12 @@ in test output or source changes.
    with verified defaults and operational limitations.
 5. Deploy behind a known proxy configuration and monitor 403/413/429 rates
    before increasing limits.
+
+## Verification evidence
+
+- `TEST_DATABASE_URL=postgres://... go test -race -count=1 ./...` passed against the disposable PostgreSQL instance.
+- `go vet ./...`, `go build -o /tmp/gogo-dl-phase04 ./cmd/server`, and `git diff --check` passed.
+- `golangci-lint` was not installed in the environment, so `make lint` was not run.
 
 ## Rollback and recovery
 
