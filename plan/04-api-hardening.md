@@ -1,8 +1,10 @@
 # 04 — API and Abuse Protection
 
 **Priority:** P0  
-**Status:** Proposed  
+**Status:** Ready
 **Depends on:** 01, 03
+**Detailed spec:** [spec/04-api-hardening.md](../spec/04-api-hardening.md)
+**Execution plan:** [plan/04-api-hardening-execution.md](./04-api-hardening-execution.md)
 
 ## Goal
 

@@ -1,17 +1,18 @@
 # Implementation Specifications
 
-This directory contains the detailed specifications for the first three P0
-plans. The documents define behavior, boundaries, decisions, and verification
-requirements before implementation begins.
+This directory contains the detailed specifications for the first four P0 plans. The documents define behavior, boundaries, decisions, and verification
+requirements and verification decisions.
 
 ## Specifications
 
 - [01 — Test Foundation](./01-test-foundation.md)
 - [02 — Data Integrity and Transactions](./02-data-integrity.md)
 - [03 — WebSocket Authorization and Protocol Safety](./03-websocket-authorization.md)
+- [04 — API and Abuse Protection](./04-api-hardening.md)
 
 The related execution plans remain in [`plan/`](../plan/). A specification is
-not an implementation status update: all three plans are marked Done after their acceptance criteria were verified.
+
+Plans 01–03 are Done after verification; Phase 04 is Ready with its implementation specification and execution plan.
 
 ## Shared constraints
 
