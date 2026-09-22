@@ -1,7 +1,7 @@
 # 03 — WebSocket Authorization and Protocol Safety
 
 **Priority:** P0  
-**Status:** Proposed  
+**Status:** Done
 **Depends on:** 01, 02
 
 ## Goal

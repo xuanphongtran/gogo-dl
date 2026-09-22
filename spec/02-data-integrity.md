@@ -1,7 +1,7 @@
 # 02 — Data Integrity and Transactions Specification
 
 **Related plan:** [plan/02-data-integrity.md](../plan/02-data-integrity.md)  
-**Status:** Proposed  
+**Status:** Done
 **Priority:** P0
 
 ## Objective

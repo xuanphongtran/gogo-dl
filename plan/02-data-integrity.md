@@ -1,7 +1,7 @@
 # 02 — Data Integrity and Transactions
 
 **Priority:** P0  
-**Status:** Proposed  
+**Status:** Done
 **Depends on:** 01
 
 ## Goal

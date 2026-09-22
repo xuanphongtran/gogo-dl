@@ -1,7 +1,7 @@
 # 01 — Test Foundation
 
 **Priority:** P0  
-**Status:** Proposed  
+**Status:** Done
 **Depends on:** None
 
 ## Goal

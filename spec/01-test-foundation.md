@@ -1,7 +1,7 @@
 # 01 — Test Foundation Specification
 
 **Related plan:** [plan/01-test-foundation.md](../plan/01-test-foundation.md)  
-**Status:** Proposed  
+**Status:** Done
 **Priority:** P0
 
 ## Objective

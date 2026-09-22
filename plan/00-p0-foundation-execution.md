@@ -1,6 +1,6 @@
 # P0 — Foundation, Data Integrity, and WebSocket Authorization Execution Plan
 
-**Status:** Proposed  
+**Status:** Done
 **Scope:** plans 01–03  
 **Detailed specifications:** [`spec/`](../spec/)
 
@@ -136,6 +136,16 @@ At the end of each stage, review:
   the new protocol is introduced, so unauthorized WebSocket commands can be
   rejected without deleting durable data.
 - No destructive database or volume command is part of this plan.
+
+## Verification evidence
+
+Verified locally on 2026-09-22:
+
+- TEST_DATABASE_URL=... go test -race -count=1 ./... passes, including clean migration, upgrade-path, rollback, repository integrity, service, handler, and WebSocket tests.
+- go vet ./... passes.
+- make build passes.
+- git diff --check and Go formatting checks pass.
+- The CI workflow is configured for the same checks with a disposable PostgreSQL service; remote CI execution remains the deployment-system responsibility.
 
 ## Definition of done
 

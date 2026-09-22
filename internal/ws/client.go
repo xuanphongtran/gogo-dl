@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"time"
 
@@ -96,6 +97,9 @@ func (c *Client) ReadPump() {
 	for {
 		_, rawBytes, err := c.conn.ReadMessage()
 		if err != nil {
+			if errors.Is(err, websocket.ErrReadLimit) {
+				c.enqueueInbound(inboundMessage{ClientID: c.ID, UserID: c.UserID, ErrorCode: "payload_too_large"})
+			}
 			if websocket.IsUnexpectedCloseError(err,
 				websocket.CloseGoingAway,
 				websocket.CloseAbnormalClosure,

@@ -1,7 +1,7 @@
 # 03 — WebSocket Authorization and Protocol Safety Specification
 
 **Related plan:** [plan/03-websocket-authorization.md](../plan/03-websocket-authorization.md)  
-**Status:** Proposed  
+**Status:** Done
 **Priority:** P0
 
 ## Objective

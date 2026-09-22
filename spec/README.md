@@ -11,8 +11,7 @@ requirements before implementation begins.
 - [03 — WebSocket Authorization and Protocol Safety](./03-websocket-authorization.md)
 
 The related execution plans remain in [`plan/`](../plan/). A specification is
-not an implementation status update: all three plans remain `Proposed` until
-their acceptance criteria are verified.
+not an implementation status update: all three plans are marked Done after their acceptance criteria were verified.
 
 ## Shared constraints
 

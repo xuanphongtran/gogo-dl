@@ -167,6 +167,14 @@ make clean           # remove ./bin
 
 ---
 
+## Testing
+
+Unit and WebSocket tests run without external services. PostgreSQL integration tests are enabled only when TEST_DATABASE_URL points to an isolated disposable database; they never load configs/.env.
+
+    TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/gogo_dl_test?sslmode=disable go test -race -count=1 ./...
+
+The integration suite covers clean migration, upgrade from migration 000001, rollback, transaction integrity, deleted-author history, and typed constraint mapping.
+
 ## Architecture notes
 
 ### WebSocket Hub
