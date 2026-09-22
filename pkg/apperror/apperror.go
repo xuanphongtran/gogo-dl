@@ -20,12 +20,13 @@ func (e *AppError) Error() string { return e.Message }
 
 // Common errors
 var (
-	ErrUnauthorized = &AppError{Code: http.StatusUnauthorized, Message: "unauthorized"}
-	ErrForbidden    = &AppError{Code: http.StatusForbidden, Message: "forbidden"}
-	ErrNotFound     = &AppError{Code: http.StatusNotFound, Message: "not found"}
-	ErrConflict     = &AppError{Code: http.StatusConflict, Message: "resource already exists"}
-	ErrBadRequest   = &AppError{Code: http.StatusBadRequest, Message: "bad request"}
-	ErrInternal     = &AppError{Code: http.StatusInternalServerError, Message: "internal server error"}
+	ErrUnauthorized     = &AppError{Code: http.StatusUnauthorized, Message: "unauthorized"}
+	ErrForbidden        = &AppError{Code: http.StatusForbidden, Message: "forbidden"}
+	ErrNotFound         = &AppError{Code: http.StatusNotFound, Message: "not found"}
+	ErrConflict         = &AppError{Code: http.StatusConflict, Message: "resource already exists"}
+	ErrAccountOwnsRooms = &AppError{Code: http.StatusConflict, Message: "cannot delete account while owning rooms"}
+	ErrBadRequest       = &AppError{Code: http.StatusBadRequest, Message: "bad request"}
+	ErrInternal         = &AppError{Code: http.StatusInternalServerError, Message: "internal server error"}
 )
 
 // New creates a new AppError with the given status code and message.

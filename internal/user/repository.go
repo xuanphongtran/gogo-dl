@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 	"github.com/xuanphongtran/gogo-dl/pkg/apperror"
 )
 
@@ -19,6 +20,7 @@ type Repository interface {
 	GetByUsername(ctx context.Context, username string) (*User, error)
 	Update(ctx context.Context, u *User) error
 	Delete(ctx context.Context, id int64) error
+	DeleteAccount(ctx context.Context, id int64) error
 }
 
 // postgresRepository is the PostgreSQL implementation of Repository.
@@ -48,10 +50,14 @@ func (r *postgresRepository) Create(ctx context.Context, u *User) error {
 	}
 	defer rows.Close()
 
-	if rows.Next() {
-		if err := rows.Scan(&u.ID, &u.CreatedAt, &u.UpdatedAt); err != nil {
-			return fmt.Errorf("user repo Create scan: %w", err)
-		}
+	if !rows.Next() {
+		return fmt.Errorf("user repo Create: %w", sql.ErrNoRows)
+	}
+	if err := rows.Scan(&u.ID, &u.CreatedAt, &u.UpdatedAt); err != nil {
+		return fmt.Errorf("user repo Create scan: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("user repo Create rows: %w", err)
 	}
 	return nil
 }
@@ -59,21 +65,21 @@ func (r *postgresRepository) Create(ctx context.Context, u *User) error {
 // GetByID fetches a user by primary key.
 func (r *postgresRepository) GetByID(ctx context.Context, id int64) (*User, error) {
 	var u User
-	err := r.db.GetContext(ctx, &u, `SELECT * FROM users WHERE id = $1`, id)
+	err := r.db.GetContext(ctx, &u, `SELECT id, username, email, password_hash, avatar_url, created_at, updated_at FROM users WHERE id = $1`, id)
 	return handleGetErr(&u, err, "user repo GetByID")
 }
 
 // GetByEmail fetches a user by email address (used during login).
 func (r *postgresRepository) GetByEmail(ctx context.Context, email string) (*User, error) {
 	var u User
-	err := r.db.GetContext(ctx, &u, `SELECT * FROM users WHERE email = $1`, email)
+	err := r.db.GetContext(ctx, &u, `SELECT id, username, email, password_hash, avatar_url, created_at, updated_at FROM users WHERE email = $1`, email)
 	return handleGetErr(&u, err, "user repo GetByEmail")
 }
 
 // GetByUsername fetches a user by username.
 func (r *postgresRepository) GetByUsername(ctx context.Context, username string) (*User, error) {
 	var u User
-	err := r.db.GetContext(ctx, &u, `SELECT * FROM users WHERE username = $1`, username)
+	err := r.db.GetContext(ctx, &u, `SELECT id, username, email, password_hash, avatar_url, created_at, updated_at FROM users WHERE username = $1`, username)
 	return handleGetErr(&u, err, "user repo GetByUsername")
 }
 
@@ -96,23 +102,21 @@ func (r *postgresRepository) Update(ctx context.Context, u *User) error {
 	}
 	defer rows.Close()
 
-	if rows.Next() {
-		rows.Scan(&u.UpdatedAt)
+	if !rows.Next() {
+		return apperror.ErrNotFound
+	}
+	if err := rows.Scan(&u.UpdatedAt); err != nil {
+		return fmt.Errorf("user repo Update scan: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("user repo Update rows: %w", err)
 	}
 	return nil
 }
 
-// Delete soft-deletes… or hard-deletes a user. Here we do a hard delete for simplicity.
+// Delete delegates to the transactional account deletion path.
 func (r *postgresRepository) Delete(ctx context.Context, id int64) error {
-	res, err := r.db.ExecContext(ctx, `DELETE FROM users WHERE id = $1`, id)
-	if err != nil {
-		return fmt.Errorf("user repo Delete: %w", err)
-	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
-		return apperror.ErrNotFound
-	}
-	return nil
+	return r.DeleteAccount(ctx, id)
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -129,19 +133,6 @@ func handleGetErr(u *User, err error, op string) (*User, error) {
 
 // isUniqueViolation detects PostgreSQL unique constraint error code 23505.
 func isUniqueViolation(err error) bool {
-	return err != nil && contains(err.Error(), "23505")
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr ||
-		len(s) > 0 && containsStr(s, substr))
-}
-
-func containsStr(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
+	var pqErr *pq.Error
+	return errors.As(err, &pqErr) && pqErr.Code == "23505"
 }

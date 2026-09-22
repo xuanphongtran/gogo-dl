@@ -2,6 +2,8 @@
 
 This directory breaks the next implementation work into ordered, reviewable feature plans for the real-time chat domain.
 
+Detailed implementation specifications for plans 01–03 are in [`spec/`](../spec/), with the combined execution sequence in [`00-p0-foundation-execution.md`](./00-p0-foundation-execution.md).
+
 ## Priority model
 
 - **P0 — MVP safety:** correctness, authorization, data integrity, and regression protection. Complete before adding user-facing breadth.

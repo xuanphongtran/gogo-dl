@@ -36,7 +36,8 @@ type Hub struct {
 	rooms map[string]map[string]*Client
 
 	// Inbound registration requests from new connections.
-	register chan *Client
+	register   chan *Client
+	registered chan *Client
 
 	// Inbound unregistration requests — client closed or errored.
 	unregister chan *Client
@@ -47,8 +48,16 @@ type Hub struct {
 	// broadcast carries events pushed by domain services (e.g. chat service).
 	broadcast chan BroadcastRequest
 
+	// authorized carries results of room authorization work performed outside Run.
+	authorized chan authorizationResult
+	// revoke carries durable membership revocations into the event loop.
+	revoke     chan revocationRequest
+	authorizer RoomAuthorizer
+
 	// done is closed to signal Run() to exit (graceful shutdown).
-	done chan struct{}
+	done         chan struct{}
+	stopped      chan struct{}
+	shutdownOnce sync.Once
 
 	// mu protects upgrader (gorilla upgrader is safe, but we wrap for future use).
 	mu       sync.Mutex
@@ -67,10 +76,14 @@ func New() *Hub {
 		clients:    make(map[string]*Client),
 		rooms:      make(map[string]map[string]*Client),
 		register:   make(chan *Client, 64),
+		registered: make(chan *Client, 64),
 		unregister: make(chan *Client, 64),
 		inbound:    make(chan inboundMessage, 256),
 		broadcast:  make(chan BroadcastRequest, 256),
+		authorized: make(chan authorizationResult, 64),
+		revoke:     make(chan revocationRequest, 64),
 		done:       make(chan struct{}),
+		stopped:    make(chan struct{}),
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -84,6 +97,7 @@ func New() *Hub {
 //
 // All state mutations (maps) are performed here — no locking required.
 func (h *Hub) Run() {
+	defer close(h.stopped)
 	log.Info().Msg("ws: hub started")
 	for {
 		select {
@@ -95,11 +109,18 @@ func (h *Hub) Run() {
 				Str("client_id", client.ID).
 				Int64("user_id", client.UserID).
 				Msg("ws: client registered")
+			if h.registered != nil {
+				select {
+				case h.registered <- client:
+				default:
+				}
+			}
 
 		// ── Client disconnected ───────────────────────────────────────────────
 		case client := <-h.unregister:
 			if _, ok := h.clients[client.ID]; ok {
 				delete(h.clients, client.ID)
+				client.cancel()
 				close(client.send)
 
 				// Remove the client from every room it was in.
@@ -126,6 +147,12 @@ func (h *Hub) Run() {
 		case ibm := <-h.inbound:
 			h.handleInbound(ibm)
 
+		case result := <-h.authorized:
+			h.handleAuthorization(result)
+
+		case req := <-h.revoke:
+			h.handleRevocation(req)
+
 		// ── Event pushed by a domain service ─────────────────────────────────
 		case req := <-h.broadcast:
 			h.fanOut(req.RoomID, req.Message, "")
@@ -134,6 +161,7 @@ func (h *Hub) Run() {
 		case <-h.done:
 			// Close all client send channels so WritePump goroutines exit.
 			for _, c := range h.clients {
+				c.cancel()
 				close(c.send)
 			}
 			log.Info().Msg("ws: hub stopped")
@@ -144,7 +172,7 @@ func (h *Hub) Run() {
 
 // Shutdown signals the hub event loop to stop. Safe to call from any goroutine.
 func (h *Hub) Shutdown() {
-	close(h.done)
+	h.shutdownOnce.Do(func() { close(h.done) })
 }
 
 // Broadcast pushes a Message to all clients currently in roomID.
@@ -153,6 +181,8 @@ func (h *Hub) Shutdown() {
 func (h *Hub) Broadcast(roomID string, msg Message) error {
 	req := BroadcastRequest{RoomID: roomID, Message: msg}
 	select {
+	case <-h.done:
+		return fmt.Errorf("ws: hub is stopped")
 	case h.broadcast <- req:
 		return nil
 	default:
@@ -170,8 +200,14 @@ func (h *Hub) Upgrade(w http.ResponseWriter, r *http.Request, clientID string, u
 		return fmt.Errorf("ws: upgrade: %w", err)
 	}
 
-	client := newClient(clientID, userID, conn, h)
-	h.register <- client
+	client := newClient(clientID, userID, conn, h, r.Context())
+	select {
+	case h.register <- client:
+	case <-h.done:
+		client.cancel()
+		conn.Close()
+		return fmt.Errorf("ws: hub is stopped")
+	}
 
 	// Each client needs exactly 2 goroutines: one reader, one writer.
 	go client.WritePump()
@@ -189,19 +225,36 @@ func (h *Hub) handleInbound(ibm inboundMessage) {
 		return
 	}
 
+	if ibm.ErrorCode != "" {
+		h.sendProtocolError(client, ibm.Message.RoomID, ibm.ErrorCode, "invalid WebSocket command")
+		return
+	}
+
 	switch ibm.Message.Type {
 	case EventJoin:
-		// The client wants to subscribe to a room.
-		roomID := ibm.Message.RoomID
-		if roomID == "" {
+		if ibm.Message.Payload != nil {
+			h.sendProtocolError(client, ibm.Message.RoomID, "invalid_command", "join does not accept a payload")
 			return
 		}
-		h.addToRoom(roomID, client)
-		client.rooms[roomID] = struct{}{}
+		h.requestJoin(client, ibm.Message.RoomID)
 
-		// Notify everyone in the room (including the new joiner).
+	case EventLeave:
+		if ibm.Message.Payload != nil {
+			h.sendProtocolError(client, ibm.Message.RoomID, "invalid_command", "leave does not accept a payload")
+			return
+		}
+		_, roomID, err := parseRoomID(ibm.Message.RoomID)
+		if err != nil {
+			h.sendProtocolError(client, ibm.Message.RoomID, "invalid_room_id", "invalid room id")
+			return
+		}
+		if _, joined := client.rooms[roomID]; !joined {
+			return
+		}
+		h.removeFromRoom(roomID, client)
+		delete(client.rooms, roomID)
 		h.fanOut(roomID, Message{
-			Type:   EventJoin,
+			Type:   EventLeave,
 			RoomID: roomID,
 			Payload: map[string]interface{}{
 				"user_id":   client.UserID,
@@ -209,23 +262,11 @@ func (h *Hub) handleInbound(ibm inboundMessage) {
 			},
 		}, "")
 
-		log.Debug().
-			Str("room_id", roomID).
-			Str("client_id", client.ID).
-			Msg("ws: client joined room")
-
-	case EventLeave:
-		roomID := ibm.Message.RoomID
-		h.removeFromRoom(roomID, client)
-		delete(client.rooms, roomID)
+	case EventError:
+		h.sendProtocolError(client, ibm.Message.RoomID, "unsupported_event", "client error events are not accepted")
 
 	default:
-		// For all other event types (e.g. "message"), fan out to the room.
-		// In a real app you might validate/persist here via a callback.
-		if ibm.Message.RoomID != "" {
-			// Exclude the sender to avoid echo (comment out if echo is desired).
-			h.fanOut(ibm.Message.RoomID, ibm.Message, ibm.ClientID)
-		}
+		h.sendProtocolError(client, ibm.Message.RoomID, "unsupported_event", "unsupported WebSocket event")
 	}
 }
 

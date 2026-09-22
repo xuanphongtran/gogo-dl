@@ -15,7 +15,7 @@ type Room struct {
 type Message struct {
 	ID        int64     `db:"id"         json:"id"`
 	RoomID    int64     `db:"room_id"    json:"room_id"`
-	UserID    int64     `db:"user_id"    json:"user_id"`
+	UserID    *int64    `db:"user_id"    json:"user_id"`
 	Username  string    `db:"username"   json:"username"` // joined from users table
 	Content   string    `db:"content"    json:"content"`
 	CreatedAt time.Time `db:"created_at" json:"created_at"`

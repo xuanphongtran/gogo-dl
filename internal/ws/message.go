@@ -31,7 +31,8 @@ type Message struct {
 // inboundMessage is what the hub reads from a client after JSON decode.
 // The Payload field carries the raw JSON so each handler can further unmarshal it.
 type inboundMessage struct {
-	ClientID string
-	UserID   int64
-	Message  Message
+	ClientID  string
+	UserID    int64
+	Message   Message
+	ErrorCode string
 }

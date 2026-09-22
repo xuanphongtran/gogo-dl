@@ -90,7 +90,7 @@ func parseToken(tokenStr, secret string, expectedType TokenType) (*Claims, error
 		tokenStr,
 		&Claims{},
 		func(t *jwt.Token) (interface{}, error) {
-			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			if t.Method != jwt.SigningMethodHS256 {
 				return nil, fmt.Errorf("jwt: unexpected signing method: %v", t.Header["alg"])
 			}
 			return []byte(secret), nil

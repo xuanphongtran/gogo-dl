@@ -13,7 +13,10 @@ func Logger() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		path := c.Request.URL.Path
-		query := c.Request.URL.RawQuery
+		query := c.Request.URL.Query()
+		if query.Has("token") {
+			query.Set("token", "[redacted]")
+		}
 
 		c.Next()
 
@@ -27,8 +30,8 @@ func Logger() gin.HandlerFunc {
 			event = log.Warn()
 		}
 
-		if query != "" {
-			path = path + "?" + query
+		if len(query) > 0 {
+			path = path + "?" + query.Encode()
 		}
 
 		event.

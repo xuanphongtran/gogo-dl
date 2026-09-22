@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"golang.org/x/crypto/bcrypt"
 	"github.com/xuanphongtran/gogo-dl/internal/config"
 	"github.com/xuanphongtran/gogo-dl/internal/middleware"
 	"github.com/xuanphongtran/gogo-dl/pkg/apperror"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Service encapsulates business logic for the user domain.
@@ -106,5 +106,5 @@ func (s *Service) DeleteAccount(ctx context.Context, requesterID, targetID int64
 	if requesterID != targetID {
 		return apperror.ErrForbidden
 	}
-	return s.repo.Delete(ctx, targetID)
+	return s.repo.DeleteAccount(ctx, targetID)
 }

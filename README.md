@@ -192,3 +192,11 @@ domain service → hub.Broadcast(roomID, msg) → broadcast channel
 ### Token refresh
 
 Clients should proactively refresh before the access token expires (`expires_at` is in the login/register response). The refresh endpoint issues a brand-new token pair.
+
+
+## Safety behavior for realtime access
+
+- WebSocket clients may send only `join` and `leave` commands. Room joins are checked against PostgreSQL membership before the Hub subscribes the connection.
+- Client-originated message and lifecycle events are rejected; durable messages are persisted through the chat service before broadcast.
+- Membership revocation removes active room subscriptions after the membership transaction commits and the Hub processes the control event.
+- If an account is deleted, authored message history is retained with a nullable `user_id` and the username `[deleted user]`.

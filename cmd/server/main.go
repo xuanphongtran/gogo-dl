@@ -66,9 +66,6 @@ func main() {
 
 	// ── 4. WebSocket Hub ──────────────────────────────────────────────────────
 	hub := ws.New()
-	// Run() is the hub's event loop — must be in its own goroutine.
-	go hub.Run()
-	log.Info().Msg("ws hub running")
 
 	// ── 5. Dependency wiring (manual DI, no framework) ───────────────────────
 
@@ -80,6 +77,10 @@ func main() {
 	// chat domain
 	chatRepo := chat.NewRepository(db.DB)
 	chatSvc := chat.NewService(chatRepo, hub)
+	hub.SetRoomAuthorizer(chatSvc)
+	// Run() is the hub event loop; start it after all dependencies are wired.
+	go hub.Run()
+	log.Info().Msg("ws hub running")
 	chatHandler := chat.NewHandler(chatSvc, hub)
 
 	// ── 6. HTTP Server ────────────────────────────────────────────────────────

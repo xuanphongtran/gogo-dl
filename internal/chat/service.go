@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/rs/zerolog/log"
 	"github.com/xuanphongtran/gogo-dl/internal/ws"
 	"github.com/xuanphongtran/gogo-dl/pkg/apperror"
 )
@@ -29,12 +30,9 @@ func (s *Service) CreateRoom(ctx context.Context, creatorID int64, req *CreateRo
 		Name:      req.Name,
 		CreatedBy: creatorID,
 	}
-	if err := s.repo.CreateRoom(ctx, room); err != nil {
+	if err := s.repo.CreateRoomWithMember(ctx, room, creatorID); err != nil {
 		return nil, err
 	}
-
-	// The creator is automatically a member.
-	_ = s.repo.AddMember(ctx, room.ID, creatorID)
 
 	return room, nil
 }
@@ -85,7 +83,7 @@ func (s *Service) SendMessage(ctx context.Context, userID int64, roomID int64, r
 
 	msg := &Message{
 		RoomID:   roomID,
-		UserID:   userID,
+		UserID:   &userID,
 		Username: username,
 		Content:  req.Content,
 	}
@@ -113,7 +111,7 @@ func (s *Service) SendMessage(ctx context.Context, userID int64, roomID int64, r
 	// the message is already persisted.
 	if err := s.hub.Broadcast(wsRoomID, wsMsg); err != nil {
 		// In production you might emit a metric here.
-		fmt.Printf("[chat] broadcast warning: %v\n", err)
+		log.Warn().Err(err).Str("room_id", wsRoomID).Msg("chat: realtime broadcast dropped")
 	}
 
 	return msg, nil

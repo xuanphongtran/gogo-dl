@@ -1,7 +1,10 @@
 package ws
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"io"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -44,10 +47,14 @@ type Client struct {
 
 	// Reference to the parent hub so the client can unregister itself.
 	hub *Hub
+
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 // newClient creates a Client and registers it with the hub.
-func newClient(id string, userID int64, conn *websocket.Conn, hub *Hub) *Client {
+func newClient(id string, userID int64, conn *websocket.Conn, hub *Hub, parentCtx context.Context) *Client {
+	ctx, cancel := context.WithCancel(context.WithoutCancel(parentCtx))
 	return &Client{
 		ID:     id,
 		UserID: userID,
@@ -55,6 +62,8 @@ func newClient(id string, userID int64, conn *websocket.Conn, hub *Hub) *Client 
 		conn:   conn,
 		send:   make(chan []byte, 256),
 		hub:    hub,
+		ctx:    ctx,
+		cancel: cancel,
 	}
 }
 
@@ -66,8 +75,14 @@ func newClient(id string, userID int64, conn *websocket.Conn, hub *Hub) *Client 
 func (c *Client) ReadPump() {
 	defer func() {
 		// When ReadPump exits (client disconnect / error), unregister & close.
-		c.hub.unregister <- c
+		select {
+		case c.hub.unregister <- c:
+		case <-c.hub.done:
+		}
 		c.conn.Close()
+		if c.cancel != nil {
+			c.cancel()
+		}
 	}()
 
 	c.conn.SetReadLimit(maxMessageSize)
@@ -91,17 +106,26 @@ func (c *Client) ReadPump() {
 		}
 
 		var msg Message
-		if err := json.Unmarshal(rawBytes, &msg); err != nil {
+		decoder := json.NewDecoder(bytes.NewReader(rawBytes))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&msg); err != nil {
 			log.Warn().Err(err).Str("client_id", c.ID).Msg("ws: invalid message format")
+			c.enqueueInbound(inboundMessage{ClientID: c.ID, UserID: c.UserID, ErrorCode: "invalid_command"})
+			continue
+		}
+		var extra interface{}
+		if err := decoder.Decode(&extra); err != io.EOF {
+			log.Warn().Str("client_id", c.ID).Msg("ws: multiple JSON messages in frame")
+			c.enqueueInbound(inboundMessage{ClientID: c.ID, UserID: c.UserID, ErrorCode: "invalid_command"})
 			continue
 		}
 
 		// Forward to hub for dispatch.
-		c.hub.inbound <- inboundMessage{
+		c.enqueueInbound(inboundMessage{
 			ClientID: c.ID,
 			UserID:   c.UserID,
 			Message:  msg,
-		}
+		})
 	}
 }
 
@@ -131,13 +155,22 @@ func (c *Client) WritePump() {
 			if err != nil {
 				return
 			}
-			w.Write(data)
+			if _, err := w.Write(data); err != nil {
+				_ = w.Close()
+				return
+			}
 
 			// Drain any queued messages into the same WebSocket frame batch.
 			n := len(c.send)
 			for i := 0; i < n; i++ {
-				w.Write([]byte("\n"))
-				w.Write(<-c.send)
+				if _, err := w.Write([]byte("\n")); err != nil {
+					_ = w.Close()
+					return
+				}
+				if _, err := w.Write(<-c.send); err != nil {
+					_ = w.Close()
+					return
+				}
 			}
 
 			if err := w.Close(); err != nil {
