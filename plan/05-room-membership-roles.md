@@ -1,7 +1,7 @@
 # 05 — Room Membership and Roles
 
 **Priority:** P1  
-**Status:** Proposed  
+**Status:** Ready
 **Depends on:** 02, 03, 04
 
 ## Goal
@@ -25,7 +25,10 @@ Provide a complete room access model for private and moderated conversations.
 - [ ] Membership and ownership changes are transactional.
 - [ ] API, schema, event contracts, and tests are documented together.
 
-## Open decisions
+Resolved in [spec/05-room-membership-roles.md](../spec/05-room-membership-roles.md):
 
-- Whether public rooms permit reading history before joining.
-- Whether ownership transfer is mandatory before the owner leaves.
+- Public rooms are discoverable and self-joinable, but history and WebSocket
+  subscription still require membership.
+- Ownership transfer is mandatory before the owner leaves or deletes their
+  account; archival ownership is out of scope.
+- Visibility is immutable after creation in this phase.

@@ -126,8 +126,16 @@ Profile updates accept an avatar URL only when it is an absolute `http://` or
 | POST   | `/api/v1/rooms`                 | ✓    | Create a room                    |
 | GET    | `/api/v1/rooms/:id`             | ✓    | Get room details                 |
 | POST   | `/api/v1/rooms/:id/join`        | ✓    | Join a room                      |
+| DELETE | `/api/v1/rooms/:id/membership` | ✓ | Leave the current room membership |
+| GET | `/api/v1/rooms/:id/members` | ✓ | List room members and roles |
+| POST | `/api/v1/rooms/:id/invitations` | ✓ | Invite a user to a room |
+| DELETE | `/api/v1/rooms/:id/members/:user_id` | ✓ | Remove a room member |
+| PATCH | `/api/v1/rooms/:id/members/:user_id` | ✓ | Change member role |
+| POST | `/api/v1/rooms/:id/ownership` | ✓ | Transfer room ownership |
 | GET    | `/api/v1/rooms/:id/messages`    | ✓    | List messages (cursor pagination)|
 | POST   | `/api/v1/rooms/:id/messages`    | ✓    | Send a message (+ WS broadcast)  |
+
+Invitation actions use `GET /api/v1/users/me/invitations`, `POST /api/v1/invitations/:id/accept`, and `POST /api/v1/invitations/:id/decline`. Public rooms can be discovered and joined by authenticated users; private rooms require an accepted invitation. Message history and WebSocket subscriptions require current membership.
 
 ### WebSocket
 

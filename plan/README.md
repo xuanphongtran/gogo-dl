@@ -20,7 +20,7 @@ Within the same priority, lower sequence numbers should normally be completed fi
 | 02 | P0 | [Data integrity and transactions](./02-data-integrity.md) | Valid schema and atomic multi-step mutations | 01 | Done |
 | 03 | P0 | [WebSocket authorization](./03-websocket-authorization.md) | Only authorized members can subscribe or publish | 01, 02 | Done |
 | 04 | P0 | [API and abuse protection](./04-api-hardening.md) | Safe validation, origin checks, limits, and consistent errors | 01, 03 | Done |
-| 05 | P1 | [Room membership and roles](./05-room-membership-roles.md) | Private rooms, invitations, ownership, and moderation roles | 02–04 | Proposed |
+| 05 | P1 | [Room membership and roles](./05-room-membership-roles.md) | Private rooms, invitations, ownership, and moderation roles | 02–04 | Ready |
 | 06 | P1 | [Message lifecycle](./06-message-lifecycle.md) | Edit, delete, and consistent real-time message events | 03–05 | Proposed |
 | 07 | P1 | [Presence, typing, and read state](./07-presence-read-state.md) | Online state, typing indicators, and unread/read tracking | 03, 05 | Proposed |
 | 08 | P2 | [Search, attachments, and notifications](./08-rich-messaging.md) | Discoverable messages and richer asynchronous engagement | 05–07 | Proposed |
