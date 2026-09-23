@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/xuanphongtran/gogo-dl/pkg/apperror"
 )
@@ -232,13 +233,18 @@ func (r *postgresRepository) CreateOrGetInvitation(ctx context.Context, roomID, 
 			FOR UPDATE`
 		if err := tx.GetContext(ctx, &invitation, query, roomID, inviteeID); err == nil {
 			if invitation.Status != InvitationAccepted {
-				if _, err := tx.ExecContext(ctx, `
+				var respondedAt sql.NullTime
+				if err := tx.QueryRowxContext(ctx, `
 					UPDATE room_invitations
 					SET status = 'accepted', updated_at = NOW(), responded_at = COALESCE(responded_at, NOW())
-					WHERE id = $1`, invitation.ID); err != nil {
+					WHERE id = $1
+					RETURNING updated_at, responded_at`, invitation.ID).Scan(&invitation.UpdatedAt, &respondedAt); err != nil {
 					return rollback(fmt.Errorf("chat repo CreateOrGetInvitation accepted update: %w", err))
 				}
 				invitation.Status = InvitationAccepted
+				if respondedAt.Valid {
+					invitation.RespondedAt = &respondedAt.Time
+				}
 			}
 			if err := tx.Commit(); err != nil {
 				return nil, false, fmt.Errorf("chat repo CreateOrGetInvitation commit: %w", err)
@@ -267,15 +273,17 @@ func (r *postgresRepository) CreateOrGetInvitation(ctx context.Context, roomID, 
 			}
 			return &invitation, false, nil
 		}
-		if _, err := tx.ExecContext(ctx, `
+		var updatedAt time.Time
+		if err := tx.GetContext(ctx, &updatedAt, `
 			UPDATE room_invitations
 			SET invited_by = $2, status = 'pending', updated_at = NOW(), responded_at = NULL
-			WHERE id = $1`, invitation.ID, inviterID); err != nil {
+			WHERE id = $1
+			RETURNING updated_at`, invitation.ID, inviterID); err != nil {
 			return rollback(fmt.Errorf("chat repo CreateOrGetInvitation retry: %w", err))
 		}
 		invitation.InvitedBy = &inviterID
 		invitation.Status = InvitationPending
-		invitation.UpdatedAt = invitation.CreatedAt
+		invitation.UpdatedAt = updatedAt
 		invitation.RespondedAt = nil
 		if err := tx.Commit(); err != nil {
 			return nil, false, fmt.Errorf("chat repo CreateOrGetInvitation commit: %w", err)
@@ -327,16 +335,16 @@ func (r *postgresRepository) ListInvitations(ctx context.Context, inviteeID int6
 	return invitations, nil
 }
 
-func (r *postgresRepository) RespondInvitation(ctx context.Context, invitationID, inviteeID int64, status InvitationStatus) (*Invitation, error) {
+func (r *postgresRepository) RespondInvitation(ctx context.Context, invitationID, inviteeID int64, status InvitationStatus) (*Invitation, bool, error) {
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
-		return nil, fmt.Errorf("chat repo RespondInvitation begin: %w", err)
+		return nil, false, fmt.Errorf("chat repo RespondInvitation begin: %w", err)
 	}
-	rollback := func(opErr error) (*Invitation, error) {
+	rollback := func(opErr error) (*Invitation, bool, error) {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
-			return nil, fmt.Errorf("chat repo RespondInvitation rollback: %v: %w", rollbackErr, opErr)
+			return nil, false, fmt.Errorf("chat repo RespondInvitation rollback: %v: %w", rollbackErr, opErr)
 		}
-		return nil, opErr
+		return nil, false, opErr
 	}
 
 	var invitation Invitation
@@ -353,27 +361,40 @@ func (r *postgresRepository) RespondInvitation(ctx context.Context, invitationID
 		return rollback(fmt.Errorf("chat repo RespondInvitation lookup: %w", err))
 	}
 
+	membershipCreated := false
 	if invitation.Status == status {
 		if status == InvitationAccepted {
-			if _, err := tx.ExecContext(ctx,
-				`INSERT INTO room_members (room_id, user_id, role) VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING`, invitation.RoomID, inviteeID); err != nil {
+			result, err := tx.ExecContext(ctx,
+				`INSERT INTO room_members (room_id, user_id, role) VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING`, invitation.RoomID, inviteeID)
+			if err != nil {
 				return rollback(fmt.Errorf("chat repo RespondInvitation membership: %w", err))
 			}
+			affected, err := result.RowsAffected()
+			if err != nil {
+				return rollback(fmt.Errorf("chat repo RespondInvitation membership rows affected: %w", err))
+			}
+			membershipCreated = affected > 0
 		}
 		if err := tx.Commit(); err != nil {
-			return nil, fmt.Errorf("chat repo RespondInvitation commit: %w", err)
+			return nil, false, fmt.Errorf("chat repo RespondInvitation commit: %w", err)
 		}
-		return &invitation, nil
+		return &invitation, membershipCreated, nil
 	}
 	if invitation.Status != InvitationPending {
 		return rollback(apperror.ErrInvitationState)
 	}
 
 	if status == InvitationAccepted {
-		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO room_members (room_id, user_id, role) VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING`, invitation.RoomID, inviteeID); err != nil {
+		result, err := tx.ExecContext(ctx,
+			`INSERT INTO room_members (room_id, user_id, role) VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING`, invitation.RoomID, inviteeID)
+		if err != nil {
 			return rollback(fmt.Errorf("chat repo RespondInvitation membership: %w", err))
 		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return rollback(fmt.Errorf("chat repo RespondInvitation membership rows affected: %w", err))
+		}
+		membershipCreated = affected > 0
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE room_invitations
@@ -388,7 +409,7 @@ func (r *postgresRepository) RespondInvitation(ctx context.Context, invitationID
 	respondedAt := invitation.UpdatedAt
 	invitation.RespondedAt = &respondedAt
 	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("chat repo RespondInvitation commit: %w", err)
+		return nil, false, fmt.Errorf("chat repo RespondInvitation commit: %w", err)
 	}
-	return &invitation, nil
+	return &invitation, membershipCreated, nil
 }

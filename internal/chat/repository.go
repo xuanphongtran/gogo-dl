@@ -32,7 +32,7 @@ type Repository interface {
 	CreateOrGetInvitation(ctx context.Context, roomID, inviterID, inviteeID int64) (*Invitation, bool, error)
 	GetInvitation(ctx context.Context, invitationID, inviteeID int64) (*Invitation, error)
 	ListInvitations(ctx context.Context, inviteeID int64, status InvitationStatus, limit int) ([]*Invitation, error)
-	RespondInvitation(ctx context.Context, invitationID, inviteeID int64, status InvitationStatus) (*Invitation, error)
+	RespondInvitation(ctx context.Context, invitationID, inviteeID int64, status InvitationStatus) (*Invitation, bool, error)
 
 	// Message operations
 	CreateMessage(ctx context.Context, msg *Message) error

@@ -71,6 +71,15 @@ func expectMemberNotFound(mock sqlmock.Sqlmock, roomID, userID int64) {
 		WillReturnError(sql.ErrNoRows)
 }
 
+func expectMemberError(mock sqlmock.Sqlmock, roomID, userID int64, err error) {
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT rm.room_id, rm.user_id, u.username, rm.role, rm.joined_at
+		FROM room_members rm
+		JOIN users u ON u.id = rm.user_id
+		WHERE rm.room_id = $1 AND rm.user_id = $2`)).
+		WithArgs(roomID, userID).
+		WillReturnError(err)
+}
+
 func expectMembershipCount(mock sqlmock.Sqlmock, roomID, userID int64, member bool) {
 	count := 0
 	if member {

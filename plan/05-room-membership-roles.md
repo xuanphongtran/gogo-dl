@@ -1,7 +1,7 @@
 # 05 — Room Membership and Roles
 
 **Priority:** P1  
-**Status:** Ready
+**Status:** In progress — implementation complete; PostgreSQL verification pending
 **Depends on:** 02, 03, 04
 
 ## Goal
@@ -32,3 +32,7 @@ Resolved in [spec/05-room-membership-roles.md](../spec/05-room-membership-roles.
 - Ownership transfer is mandatory before the owner leaves or deletes their
   account; archival ownership is out of scope.
 - Visibility is immutable after creation in this phase.
+
+Implementation is complete for the HTTP, service, repository, migration, and
+WebSocket paths. The remaining verification requires a disposable PostgreSQL
+database with representative room, membership, and invitation data.

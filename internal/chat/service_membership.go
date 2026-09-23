@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"strconv"
 
 	"github.com/rs/zerolog/log"
@@ -117,6 +118,8 @@ func (s *Service) ListInvitations(ctx context.Context, userID int64, status Invi
 	}
 	if limit <= 0 {
 		limit = 50
+	} else if limit > 100 {
+		limit = 100
 	}
 	return s.repo.ListInvitations(ctx, userID, status, limit)
 }
@@ -130,16 +133,21 @@ func (s *Service) RespondInvitation(ctx context.Context, userID, invitationID in
 	if err != nil {
 		return nil, err
 	}
-	wasMember := false
 	if status == InvitationAccepted {
 		_, memberErr := s.repo.GetMember(ctx, invitation.RoomID, userID)
-		wasMember = memberErr == nil
+		switch {
+		case memberErr == nil:
+		case errors.Is(memberErr, apperror.ErrNotFound):
+			// The invitation accept transaction will create membership.
+		default:
+			return nil, memberErr
+		}
 	}
-	invitation, err = s.repo.RespondInvitation(ctx, invitationID, userID, status)
+	invitation, membershipCreated, err := s.repo.RespondInvitation(ctx, invitationID, userID, status)
 	if err != nil {
 		return nil, err
 	}
-	if status == InvitationAccepted && !wasMember {
+	if status == InvitationAccepted && membershipCreated {
 		s.broadcastMembership(invitation.RoomID, "joined", userID, RoomRoleMember, userID)
 	}
 	return invitation, nil
@@ -150,7 +158,10 @@ func (s *Service) RespondInvitation(ctx context.Context, userID, invitationID in
 func (s *Service) RemoveMemberAs(ctx context.Context, actorID, roomID, targetID int64) error {
 	actor, err := s.repo.GetMember(ctx, roomID, actorID)
 	if err != nil {
-		return apperror.ErrForbidden
+		if errors.Is(err, apperror.ErrNotFound) {
+			return apperror.ErrForbidden
+		}
+		return err
 	}
 	target, err := s.repo.GetMember(ctx, roomID, targetID)
 	if err != nil {
@@ -177,7 +188,13 @@ func (s *Service) RemoveMemberAs(ctx context.Context, actorID, roomID, targetID 
 // change roles.
 func (s *Service) ChangeMemberRole(ctx context.Context, actorID, roomID, targetID int64, role RoomRole) error {
 	actor, err := s.repo.GetMember(ctx, roomID, actorID)
-	if err != nil || actor.Role != RoomRoleOwner {
+	if err != nil {
+		if errors.Is(err, apperror.ErrNotFound) {
+			return apperror.ErrForbidden
+		}
+		return err
+	}
+	if actor.Role != RoomRoleOwner {
 		return apperror.ErrForbidden
 	}
 	target, err := s.repo.GetMember(ctx, roomID, targetID)
@@ -201,7 +218,13 @@ func (s *Service) ChangeMemberRole(ctx context.Context, actorID, roomID, targetI
 // previous owner's membership as a moderator.
 func (s *Service) TransferOwnership(ctx context.Context, actorID, roomID, targetID int64) error {
 	actor, err := s.repo.GetMember(ctx, roomID, actorID)
-	if err != nil || actor.Role != RoomRoleOwner {
+	if err != nil {
+		if errors.Is(err, apperror.ErrNotFound) {
+			return apperror.ErrForbidden
+		}
+		return err
+	}
+	if actor.Role != RoomRoleOwner {
 		return apperror.ErrForbidden
 	}
 	target, err := s.repo.GetMember(ctx, roomID, targetID)
@@ -223,7 +246,7 @@ func (s *Service) requireMember(ctx context.Context, roomID, userID int64) error
 		return err
 	}
 	if _, err := s.repo.GetMember(ctx, roomID, userID); err != nil {
-		if err == apperror.ErrNotFound {
+		if errors.Is(err, apperror.ErrNotFound) {
 			return apperror.ErrForbidden
 		}
 		return err
@@ -234,7 +257,7 @@ func (s *Service) requireMember(ctx context.Context, roomID, userID int64) error
 func (s *Service) requireManager(ctx context.Context, roomID, userID int64) error {
 	member, err := s.repo.GetMember(ctx, roomID, userID)
 	if err != nil {
-		if err == apperror.ErrNotFound {
+		if errors.Is(err, apperror.ErrNotFound) {
 			if _, roomErr := s.repo.GetRoomByID(ctx, roomID); roomErr != nil {
 				return roomErr
 			}

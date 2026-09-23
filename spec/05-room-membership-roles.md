@@ -1,7 +1,7 @@
 # 05 — Room Membership and Roles Specification
 
 **Related plan:** [plan/05-room-membership-roles.md](../plan/05-room-membership-roles.md)
-**Status:** Ready
+**Status:** Implementation complete; PostgreSQL verification pending
 **Priority:** P1
 **Depends on:** 02, 03, 04
 
