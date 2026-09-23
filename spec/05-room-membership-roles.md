@@ -278,6 +278,9 @@ Add a new migration pair; do not edit migrations `000001`–`000003`.
 - Backfill each existing room creator's membership as `owner`; fail the
   migration if the owner invariant cannot be established.
 - Add a partial unique index enforcing at most one `owner` per room.
+- Add a deferred database constraint trigger requiring exactly one owner per
+  room and requiring that owner to match `rooms.created_by` after each
+  transaction.
 - Add `room_invitations` with `id`, `room_id`, `invitee_id`, nullable
   `invited_by`, `status`, `created_at`, `updated_at`, and `responded_at`.
   Room and invitee deletion cascades; a deleted inviter is represented as
