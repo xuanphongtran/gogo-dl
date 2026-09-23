@@ -39,6 +39,19 @@ func expectRoomNotFound(mock sqlmock.Sqlmock, roomID int64) {
 		WillReturnError(sql.ErrNoRows)
 }
 
+func expectRoomForUser(mock sqlmock.Sqlmock, roomID, userID int64, room *Room) {
+	rows := sqlmock.NewRows([]string{"id", "name", "created_by", "created_at", "visibility", "role"}).
+		AddRow(room.ID, room.Name, room.CreatedBy, room.CreatedAt, room.Visibility, nil)
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT r.id, r.name, r.created_by, r.created_at, r.visibility, rm.role
+		FROM rooms r
+		LEFT JOIN room_members rm
+		  ON rm.room_id = r.id AND rm.user_id = $2
+		WHERE r.id = $1
+		  AND (r.visibility = 'public' OR rm.user_id IS NOT NULL)`)).
+		WithArgs(roomID, userID).
+		WillReturnRows(rows)
+}
+
 func expectMember(mock sqlmock.Sqlmock, roomID, userID int64, role RoomRole) {
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT rm.room_id, rm.user_id, u.username, rm.role, rm.joined_at
 		FROM room_members rm
