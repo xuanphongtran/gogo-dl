@@ -17,11 +17,22 @@ type Repository interface {
 	CreateRoomWithMember(ctx context.Context, room *Room, userID int64) error
 	GetRoomByID(ctx context.Context, id int64) (*Room, error)
 	ListRooms(ctx context.Context) ([]*Room, error)
+	GetRoomForUser(ctx context.Context, roomID, userID int64) (*Room, error)
+	ListRoomsForUser(ctx context.Context, userID int64) ([]*Room, error)
 
 	// Member operations
 	AddMember(ctx context.Context, roomID, userID int64) error
 	RemoveMember(ctx context.Context, roomID, userID int64) error
 	IsMember(ctx context.Context, roomID, userID int64) (bool, error)
+	JoinPublicRoom(ctx context.Context, roomID, userID int64) (bool, error)
+	GetMember(ctx context.Context, roomID, userID int64) (*RoomMember, error)
+	ListMembers(ctx context.Context, roomID int64) ([]*RoomMember, error)
+	SetMemberRole(ctx context.Context, roomID, userID int64, role RoomRole) error
+	TransferOwnership(ctx context.Context, roomID, currentOwnerID, targetUserID int64) error
+	CreateOrGetInvitation(ctx context.Context, roomID, inviterID, inviteeID int64) (*Invitation, bool, error)
+	GetInvitation(ctx context.Context, invitationID, inviteeID int64) (*Invitation, error)
+	ListInvitations(ctx context.Context, inviteeID int64, status InvitationStatus, limit int) ([]*Invitation, error)
+	RespondInvitation(ctx context.Context, invitationID, inviteeID int64, status InvitationStatus) (*Invitation, error)
 
 	// Message operations
 	CreateMessage(ctx context.Context, msg *Message) error
@@ -41,8 +52,8 @@ func NewRepository(db *sqlx.DB) Repository {
 
 func (r *postgresRepository) CreateRoom(ctx context.Context, room *Room) error {
 	query := `
-		INSERT INTO rooms (name, created_by)
-		VALUES (:name, :created_by)
+		INSERT INTO rooms (name, created_by, visibility)
+		VALUES (:name, :created_by, COALESCE(NULLIF(:visibility, ''), 'public'))
 		RETURNING id, created_at`
 
 	rows, err := r.db.NamedQueryContext(ctx, query, room)
@@ -65,7 +76,7 @@ func (r *postgresRepository) CreateRoom(ctx context.Context, room *Room) error {
 
 func (r *postgresRepository) GetRoomByID(ctx context.Context, id int64) (*Room, error) {
 	var room Room
-	err := r.db.GetContext(ctx, &room, `SELECT id, name, created_by, created_at FROM rooms WHERE id = $1`, id)
+	err := r.db.GetContext(ctx, &room, `SELECT id, name, created_by, created_at, visibility FROM rooms WHERE id = $1`, id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, apperror.ErrNotFound
@@ -77,7 +88,7 @@ func (r *postgresRepository) GetRoomByID(ctx context.Context, id int64) (*Room, 
 
 func (r *postgresRepository) ListRooms(ctx context.Context) ([]*Room, error) {
 	var rooms []*Room
-	err := r.db.SelectContext(ctx, &rooms, `SELECT id, name, created_by, created_at FROM rooms ORDER BY created_at DESC`)
+	err := r.db.SelectContext(ctx, &rooms, `SELECT id, name, created_by, created_at, visibility FROM rooms ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("chat repo ListRooms: %w", err)
 	}

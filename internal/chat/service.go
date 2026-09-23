@@ -33,14 +33,27 @@ func (s *Service) CreateRoom(ctx context.Context, creatorID int64, req *CreateRo
 	if !ok {
 		return nil, apperror.ErrInvalidRequest
 	}
+	visibility := req.Visibility
+	if visibility == "" {
+		visibility = RoomVisibilityPublic
+	}
+	switch visibility {
+	case RoomVisibilityPublic, RoomVisibilityPrivate:
+	default:
+		return nil, apperror.ErrInvalidRequest
+	}
 	room := &Room{
-		Name:      name,
-		CreatedBy: creatorID,
+		Name:       name,
+		CreatedBy:  creatorID,
+		Visibility: visibility,
 	}
 	if err := s.repo.CreateRoomWithMember(ctx, room, creatorID); err != nil {
 		return nil, err
 	}
 
+	owner := RoomRoleOwner
+	room.Role = new(RoomRole)
+	*room.Role = owner
 	return room, nil
 }
 
@@ -56,11 +69,7 @@ func (s *Service) ListRooms(ctx context.Context) ([]*Room, error) {
 
 // JoinRoom adds a user to a room.
 func (s *Service) JoinRoom(ctx context.Context, roomID, userID int64) error {
-	// Validate the room exists.
-	if _, err := s.repo.GetRoomByID(ctx, roomID); err != nil {
-		return err
-	}
-	return s.repo.AddMember(ctx, roomID, userID)
+	return s.JoinPublicRoom(ctx, roomID, userID)
 }
 
 // ── Messages ─────────────────────────────────────────────────────────────────

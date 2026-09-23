@@ -54,7 +54,7 @@ func (h *Handler) RegisterWebSocketRoute(group *gin.RouterGroup, wsMiddleware ..
 
 // ListRooms returns all chat rooms.
 func (h *Handler) ListRooms(c *gin.Context) {
-	rooms, err := h.svc.ListRooms(c.Request.Context())
+	rooms, err := h.svc.ListRoomsForUser(c.Request.Context(), middleware.MustGetUserID(c))
 	if err != nil {
 		apperror.Respond(c, err)
 		return
@@ -89,7 +89,7 @@ func (h *Handler) GetRoom(c *gin.Context) {
 		return
 	}
 
-	room, err := h.svc.GetRoom(c.Request.Context(), roomID)
+	room, err := h.svc.GetRoomForUser(c.Request.Context(), middleware.MustGetUserID(c), roomID)
 	if err != nil {
 		apperror.Respond(c, err)
 		return
@@ -108,7 +108,7 @@ func (h *Handler) JoinRoom(c *gin.Context) {
 		return
 	}
 
-	if err := h.svc.JoinRoom(c.Request.Context(), roomID, userID); err != nil {
+	if err := h.svc.JoinPublicRoom(c.Request.Context(), roomID, userID); err != nil {
 		apperror.Respond(c, err)
 		return
 	}
@@ -130,7 +130,7 @@ func (h *Handler) ListMessages(c *gin.Context) {
 		return
 	}
 
-	msgs, err := h.svc.ListMessages(c.Request.Context(), roomID, &q)
+	msgs, err := h.svc.ListMessagesForUser(c.Request.Context(), middleware.MustGetUserID(c), roomID, &q)
 	if err != nil {
 		apperror.Respond(c, err)
 		return

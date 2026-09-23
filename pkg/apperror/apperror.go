@@ -25,6 +25,8 @@ var (
 	ErrNotFound            = &AppError{Code: http.StatusNotFound, Message: "not found"}
 	ErrConflict            = &AppError{Code: http.StatusConflict, Message: "resource already exists"}
 	ErrAccountOwnsRooms    = &AppError{Code: http.StatusConflict, Message: "cannot delete account while owning rooms"}
+	ErrOwnerTransfer       = &AppError{Code: http.StatusConflict, Message: "owner transfer required"}
+	ErrInvitationState     = &AppError{Code: http.StatusConflict, Message: "invitation is no longer pending"}
 	ErrBadRequest          = &AppError{Code: http.StatusBadRequest, Message: "bad request"}
 	ErrInvalidRequest      = &AppError{Code: http.StatusBadRequest, Message: "invalid request"}
 	ErrRequestBodyTooLarge = &AppError{Code: http.StatusRequestEntityTooLarge, Message: "request body too large"}

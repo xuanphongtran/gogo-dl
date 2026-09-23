@@ -68,6 +68,7 @@ func New(
 	// ── Register domain routes ────────────────────────────────────────────────
 	userHandler.RegisterRoutes(public, private)
 	chatHandler.RegisterRoutes(private)
+	chatHandler.RegisterMembershipRoutes(private)
 
 	// WebSocket upgrades need a peer limit before JWT validation and an
 	// authenticated user+peer limit after validation.

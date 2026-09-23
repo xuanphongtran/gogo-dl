@@ -20,7 +20,7 @@ type explicitRepository struct {
 func (r *explicitRepository) GetRoomByID(ctx context.Context, id int64) (*Room, error) {
 	var room Room
 	err := r.db.GetContext(ctx, &room,
-		`SELECT id, name, created_by, created_at FROM rooms WHERE id = $1`, id,
+		`SELECT id, name, created_by, created_at, visibility FROM rooms WHERE id = $1`, id,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, apperror.ErrNotFound
@@ -34,7 +34,7 @@ func (r *explicitRepository) GetRoomByID(ctx context.Context, id int64) (*Room, 
 func (r *explicitRepository) ListRooms(ctx context.Context) ([]*Room, error) {
 	var rooms []*Room
 	if err := r.db.SelectContext(ctx, &rooms,
-		`SELECT id, name, created_by, created_at FROM rooms ORDER BY created_at DESC`,
+		`SELECT id, name, created_by, created_at, visibility FROM rooms ORDER BY created_at DESC`,
 	); err != nil {
 		return nil, fmt.Errorf("chat repo ListRooms: %w", err)
 	}
