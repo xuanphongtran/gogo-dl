@@ -12,7 +12,7 @@ import (
 
 func TestHandlerGetRoomRejectsInvalidRoomID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	repo := &fakeChatRepository{}
+	repo, mock := newRepositoryTest(t)
 	handler := NewHandler(NewService(repo, ws.New()), ws.New())
 	router := gin.New()
 	router.GET("/rooms/:id", func(c *gin.Context) {
@@ -26,5 +26,8 @@ func TestHandlerGetRoomRejectsInvalidRoomID(t *testing.T) {
 
 	if res.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", res.Code, http.StatusBadRequest)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("repository expectations: %v", err)
 	}
 }

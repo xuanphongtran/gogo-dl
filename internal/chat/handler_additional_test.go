@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -15,7 +16,8 @@ import (
 
 func TestHandlerCreateRoomRejectsMalformedJSON(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	handler := NewHandler(NewService(&fakeChatRepository{}, ws.New()), ws.New())
+	repo, mock := newRepositoryTest(t)
+	handler := NewHandler(NewService(repo, ws.New()), ws.New())
 	router := gin.New()
 	router.POST("/rooms", func(c *gin.Context) {
 		c.Set(middleware.ContextKeyUserID, int64(7))
@@ -30,11 +32,15 @@ func TestHandlerCreateRoomRejectsMalformedJSON(t *testing.T) {
 	if res.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", res.Code, http.StatusBadRequest)
 	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("repository expectations: %v", err)
+	}
 }
 
 func TestHandlerListMessagesRejectsLimitAboveBoundary(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	handler := NewHandler(NewService(&fakeChatRepository{}, ws.New()), ws.New())
+	repo, mock := newRepositoryTest(t)
+	handler := NewHandler(NewService(repo, ws.New()), ws.New())
 	router := gin.New()
 	router.GET("/rooms/:id/messages", handler.ListMessages)
 
@@ -44,11 +50,16 @@ func TestHandlerListMessagesRejectsLimitAboveBoundary(t *testing.T) {
 	if res.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", res.Code, http.StatusBadRequest)
 	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("repository expectations: %v", err)
+	}
 }
 
 func TestHandlerJoinRoomMapsMissingRoom(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	handler := NewHandler(NewService(&fakeChatRepository{}, ws.New()), ws.New())
+	repo, mock := newRepositoryTest(t)
+	expectRoomNotFound(mock, 1)
+	handler := NewHandler(NewService(repo, ws.New()), ws.New())
 	router := gin.New()
 	router.POST("/rooms/:id/join", func(c *gin.Context) {
 		c.Set(middleware.ContextKeyUserID, int64(7))
@@ -61,11 +72,18 @@ func TestHandlerJoinRoomMapsMissingRoom(t *testing.T) {
 	if res.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", res.Code, http.StatusNotFound)
 	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("repository expectations: %v", err)
+	}
 }
 
 func TestHandlerSendMessageDoesNotExposeDependencyFailure(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	handler := NewHandler(NewService(&fakeChatRepository{getRoomErr: errors.New("internal db detail")}, ws.New()), ws.New())
+	repo, mock := newRepositoryTest(t)
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id, name, created_by, created_at, visibility FROM rooms WHERE id = $1")).
+		WithArgs(int64(1)).
+		WillReturnError(errors.New("internal db detail"))
+	handler := NewHandler(NewService(repo, ws.New()), ws.New())
 	router := gin.New()
 	router.POST("/rooms/:id/messages", func(c *gin.Context) {
 		c.Set(middleware.ContextKeyUserID, int64(7))
@@ -82,5 +100,8 @@ func TestHandlerSendMessageDoesNotExposeDependencyFailure(t *testing.T) {
 	}
 	if strings.Contains(res.Body.String(), "internal db detail") || !strings.Contains(res.Body.String(), apperror.ErrInternal.Message) {
 		t.Fatalf("response leaks dependency error: %s", res.Body.String())
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("repository expectations: %v", err)
 	}
 }
