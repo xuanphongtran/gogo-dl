@@ -92,6 +92,11 @@ go run ./cmd/server/main.go
 
 Server starts on `http://localhost:8080` by default.
 
+In development, interactive Swagger UI is available at
+`http://localhost:8080/swagger/index.html`. It is disabled when
+`APP_ENV=production`. Regenerate the committed API document after changing
+Swagger annotations with `make docs` (requires the Swag CLI).
+
 For internet-facing deployments, set `WS_ALLOWED_ORIGINS` to comma-separated exact `http://` or `https://` origins. Production rejects missing origins unless explicitly configured otherwise in a controlled environment. HTTP bodies, headers, WebSocket frames, connections, and in-process request rates are bounded by the `HTTP_*`, `WS_*`, `*_RATE_*`, and `*_BURST` settings in `configs/.env.example`.
 
 ---

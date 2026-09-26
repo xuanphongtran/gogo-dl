@@ -110,3 +110,28 @@ type ListMessagesQuery struct {
 	Limit  int   `form:"limit"   binding:"omitempty,min=1,max=100"`
 	Before int64 `form:"before"  binding:"omitempty"` // cursor: message ID to paginate from
 }
+
+// RoomsResponse is the response envelope for room listings.
+type RoomsResponse struct {
+	Rooms []*Room `json:"rooms"`
+}
+
+// MessagesResponse is the response envelope for message history.
+type MessagesResponse struct {
+	Messages []*Message `json:"messages"`
+}
+
+// MembersResponse is the response envelope for room members.
+type MembersResponse struct {
+	Members []*RoomMember `json:"members"`
+}
+
+// InvitationsResponse is the response envelope for invitation listings.
+type InvitationsResponse struct {
+	Invitations []*Invitation `json:"invitations"`
+}
+
+// JoinResponse is returned after joining a public room.
+type JoinResponse struct {
+	Message string `json:"message"`
+}

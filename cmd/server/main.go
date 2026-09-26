@@ -27,6 +27,16 @@ import (
 	"github.com/xuanphongtran/gogo-dl/internal/ws"
 )
 
+// @title       Gogo DL API
+// @version     1.0
+// @description REST API for the Gogo DL real-time chat backend.
+// @host        localhost:8080
+// @BasePath    /
+// @schemes     http https
+// @securityDefinitions.apikey BearerAuth
+// @in          header
+// @name        Authorization
+// @description Enter the access token as: Bearer {token}
 func main() {
 	// ── 1. Logging ────────────────────────────────────────────────────────────
 	// Pretty-print in development; JSON in production (zerolog detects automatically).
@@ -59,7 +69,7 @@ func main() {
 
 	// Run pending migrations on startup.
 	// "file://migrations" looks for SQL files relative to the working directory.
-	if err := database.MigrateUp(cfg.DSN(), "file://migrations"); err != nil {
+	if err := database.MigrateUp(cfg.MigrationURL(), "file://migrations"); err != nil {
 		log.Fatal().Err(err).Msg("failed to run migrations")
 	}
 	log.Info().Msg("migrations up to date")

@@ -29,6 +29,11 @@ type LoginRequest struct {
 	Password string `json:"password" binding:"required"`
 }
 
+// RefreshTokenRequest is the body for POST /auth/refresh.
+type RefreshTokenRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+}
+
 // UpdateProfileRequest is the body for PATCH /users/me.
 type UpdateProfileRequest struct {
 	Username  string `json:"username"   binding:"omitempty,min=3,max=50"`

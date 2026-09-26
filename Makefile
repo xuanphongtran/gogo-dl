@@ -14,7 +14,7 @@ MIGRATE_URL ?= $(shell grep DB_ $(ENV_FILE) 2>/dev/null | \
 MIGRATIONS_DIR := migrations
 
 # ── Phony targets ──────────────────────────────────────────────────────────────
-.PHONY: all run build clean test lint \
+.PHONY: all run build clean test lint docs \
         migrate-up migrate-down migrate-create \
         deps tidy docker-up docker-down
 
@@ -62,6 +62,14 @@ lint:
 	else \
 		echo "golangci-lint not installed — run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
 	fi
+
+## docs: Generate Swagger documentation from Go annotations
+docs:
+	@if ! command -v swag > /dev/null; then \
+		echo "swag not installed — run: go install github.com/swaggo/swag/cmd/swag@v1.8.12"; \
+		exit 1; \
+	fi
+	swag init -g cmd/server/main.go -d . --parseInternal --parseDependency -o docs/swagger
 
 # ── Database migrations ────────────────────────────────────────────────────────
 

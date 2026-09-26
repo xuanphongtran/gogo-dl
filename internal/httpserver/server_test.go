@@ -28,6 +28,28 @@ func TestNewConfiguresHTTPBoundary(t *testing.T) {
 	}
 }
 
+func TestSwaggerRouteIsAvailableOnlyOutsideProduction(t *testing.T) {
+	server := New(phase04ServerConfig(), nil, nil)
+	for _, path := range []string{"/swagger/index.html", "/swagger/doc.json"} {
+		res := httptest.NewRecorder()
+		server.httpServer.Handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, path, nil))
+		if res.Code != http.StatusOK {
+			t.Fatalf("development Swagger path %s status = %d, want %d; body = %s", path, res.Code, http.StatusOK, res.Body.String())
+		}
+	}
+
+	productionCfg := phase04ServerConfig()
+	productionCfg.Env = "production"
+	productionCfg.WSAllowedOrigins = []string{"https://chat.example"}
+	productionCfg.WSAllowMissingOrigin = false
+	productionServer := New(productionCfg, nil, nil)
+	res := httptest.NewRecorder()
+	productionServer.httpServer.Handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/swagger/index.html", nil))
+	if res.Code != http.StatusNotFound {
+		t.Fatalf("production Swagger status = %d, want %d", res.Code, http.StatusNotFound)
+	}
+}
+
 func phase04ServerConfig() *config.Config {
 	return &config.Config{
 		ServerHost: "127.0.0.1", ServerPort: "8080", Env: "development",

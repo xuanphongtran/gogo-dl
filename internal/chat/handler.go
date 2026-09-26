@@ -53,16 +53,35 @@ func (h *Handler) RegisterWebSocketRoute(group *gin.RouterGroup, wsMiddleware ..
 }
 
 // ListRooms returns all chat rooms.
+// @Summary      List rooms visible to the current user
+// @Tags         rooms
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200  {object} RoomsResponse
+// @Failure      401  {object} apperror.AppError
+// @Failure      500  {object} apperror.AppError
+// @Router       /api/v1/rooms [get]
 func (h *Handler) ListRooms(c *gin.Context) {
 	rooms, err := h.svc.ListRoomsForUser(c.Request.Context(), middleware.MustGetUserID(c))
 	if err != nil {
 		apperror.Respond(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"rooms": rooms})
+	c.JSON(http.StatusOK, RoomsResponse{Rooms: rooms})
 }
 
 // CreateRoom creates a new room.
+// @Summary      Create a room
+// @Tags         rooms
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        body  body  CreateRoomRequest  true  "Room payload"
+// @Success      201   {object} Room
+// @Failure      400   {object} apperror.AppError
+// @Failure      401   {object} apperror.AppError
+// @Failure      500   {object} apperror.AppError
+// @Router       /api/v1/rooms [post]
 func (h *Handler) CreateRoom(c *gin.Context) {
 	userID := middleware.MustGetUserID(c)
 
@@ -82,6 +101,17 @@ func (h *Handler) CreateRoom(c *gin.Context) {
 }
 
 // GetRoom fetches a single room by ID.
+// @Summary      Get a room visible to the current user
+// @Tags         rooms
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  int64  true  "Room ID"
+// @Success      200  {object} Room
+// @Failure      400  {object} apperror.AppError
+// @Failure      401  {object} apperror.AppError
+// @Failure      404  {object} apperror.AppError
+// @Failure      500  {object} apperror.AppError
+// @Router       /api/v1/rooms/{id} [get]
 func (h *Handler) GetRoom(c *gin.Context) {
 	roomID, err := parseRoomID(c)
 	if err != nil {
@@ -99,6 +129,18 @@ func (h *Handler) GetRoom(c *gin.Context) {
 }
 
 // JoinRoom adds the authenticated user to a room.
+// @Summary      Join a public room
+// @Tags         rooms
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  int64  true  "Room ID"
+// @Success      200  {object} JoinResponse
+// @Failure      400  {object} apperror.AppError
+// @Failure      401  {object} apperror.AppError
+// @Failure      403  {object} apperror.AppError
+// @Failure      404  {object} apperror.AppError
+// @Failure      500  {object} apperror.AppError
+// @Router       /api/v1/rooms/{id}/join [post]
 func (h *Handler) JoinRoom(c *gin.Context) {
 	userID := middleware.MustGetUserID(c)
 
@@ -113,10 +155,24 @@ func (h *Handler) JoinRoom(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "joined"})
+	c.JSON(http.StatusOK, JoinResponse{Message: "joined"})
 }
 
 // ListMessages returns paginated message history for a room.
+// @Summary      List room messages
+// @Tags         messages
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id      path   int64  true   "Room ID"
+// @Param        limit   query  int    false  "Page size"  minimum(1) maximum(100) default(50)
+// @Param        before  query  int64  false  "Return messages with IDs below this cursor" minimum(1)
+// @Success      200  {object} MessagesResponse
+// @Failure      400  {object} apperror.AppError
+// @Failure      401  {object} apperror.AppError
+// @Failure      403  {object} apperror.AppError
+// @Failure      404  {object} apperror.AppError
+// @Failure      500  {object} apperror.AppError
+// @Router       /api/v1/rooms/{id}/messages [get]
 func (h *Handler) ListMessages(c *gin.Context) {
 	roomID, err := parseRoomID(c)
 	if err != nil {
@@ -136,10 +192,25 @@ func (h *Handler) ListMessages(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"messages": msgs})
+	c.JSON(http.StatusOK, MessagesResponse{Messages: msgs})
 }
 
 // SendMessage persists a message and triggers a realtime broadcast via the hub.
+// @Summary      Send a message to a room
+// @Tags         messages
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id    path  int64              true  "Room ID"
+// @Param        body  body  SendMessageRequest true  "Message payload"
+// @Success      201  {object} Message
+// @Failure      400  {object} apperror.AppError
+// @Failure      401  {object} apperror.AppError
+// @Failure      403  {object} apperror.AppError
+// @Failure      404  {object} apperror.AppError
+// @Failure      413  {object} apperror.AppError
+// @Failure      500  {object} apperror.AppError
+// @Router       /api/v1/rooms/{id}/messages [post]
 func (h *Handler) SendMessage(c *gin.Context) {
 	userID := middleware.MustGetUserID(c)
 
