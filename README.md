@@ -30,6 +30,7 @@ gogo-dl/
 ├── pkg/apperror/               # Custom error types + gin response helper
 ├── migrations/                 # SQL migration files (golang-migrate format)
 ├── configs/.env.example        # Environment variable template
+├── .env.local                  # Local-only configuration (gitignored)
 ├── Makefile
 └── README.md
 ```
@@ -50,8 +51,8 @@ gogo-dl/
 ```bash
 git clone https://github.com/xuanphongtran/gogo-dl.git
 cd gogo-dl
-cp configs/.env.example configs/.env
-# Edit configs/.env — set DB credentials and JWT secrets
+cp configs/.env.example .env.local
+# Edit .env.local — set local DB credentials and JWT secrets
 ```
 
 ### 2. Start PostgreSQL (Docker)
@@ -76,13 +77,7 @@ docker run -d \
 make deps
 ```
 
-### 4. Run migrations
-
-```bash
-make migrate-up
-```
-
-### 5. Run the server
+### 4. Run the server
 
 ```bash
 make run          # with Air hot-reload if installed
@@ -91,6 +86,16 @@ go run ./cmd/server/main.go
 ```
 
 Server starts on `http://localhost:8080` by default.
+The server applies pending SQL migrations before accepting requests. Migration
+files are embedded in the binary, so deployments need only the built executable
+and environment variables. `.env.local` is loaded locally; existing
+`configs/.env` is still supported, and process environment variables take
+precedence over both files. Never deploy `.env.local` or commit credentials.
+
+For a Render Go Web Service backed by Neon, follow the
+[Render and Neon deployment guide](docs/deploy-render-neon.md). It covers the
+build and start commands, required environment variables, and checks before
+the first production rollout.
 
 In development, interactive Swagger UI is available at
 `http://localhost:8080/swagger/index.html`. It is disabled when

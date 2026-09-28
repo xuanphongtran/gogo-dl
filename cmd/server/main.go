@@ -43,7 +43,7 @@ func main() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339})
 
 	// ── 2. Config ─────────────────────────────────────────────────────────────
-	cfg, err := config.Load("configs/.env")
+	cfg, err := config.Load(".env.local", "configs/.env")
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to load config")
 	}
@@ -60,7 +60,8 @@ func main() {
 		Msg("starting gogo-dl")
 
 	// ── 3. Database ───────────────────────────────────────────────────────────
-	db, err := database.Connect(cfg.DSN())
+	// The encoded URL also handles passwords containing URL-special characters.
+	db, err := database.Connect(cfg.MigrationURL())
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to connect to database")
 	}
@@ -68,8 +69,8 @@ func main() {
 	log.Info().Msg("database connected")
 
 	// Run pending migrations on startup.
-	// "file://migrations" looks for SQL files relative to the working directory.
-	if err := database.MigrateUp(cfg.MigrationURL(), "file://migrations"); err != nil {
+	// Migration SQL is embedded in the binary, so startup is independent of the working directory.
+	if err := database.MigrateUpEmbedded(context.Background(), db.DB.DB); err != nil {
 		log.Fatal().Err(err).Msg("failed to run migrations")
 	}
 	log.Info().Msg("migrations up to date")
