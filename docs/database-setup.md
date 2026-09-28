@@ -13,10 +13,10 @@ Tài liệu này hướng dẫn chạy PostgreSQL local và áp dụng migration
 1. Tạo file cấu hình local:
 
    ```bash
-   cp configs/.env.example configs/.env
+   cp configs/.env.example .env.local
    ```
 
-   Các giá trị mặc định dùng PostgreSQL tại `localhost:5432`, database `gogo_dl`, user `postgres` và password `postgres`. Hãy chỉnh `configs/.env` nếu môi trường của bạn khác.
+   Các giá trị mặc định dùng PostgreSQL tại `localhost:5432`, database `gogo_dl`, user `postgres` và password `postgres`. Hãy chỉnh `.env.local` nếu môi trường của bạn khác. App vẫn hỗ trợ `configs/.env` cũ.
 
 2. Khởi động PostgreSQL:
 
@@ -26,13 +26,7 @@ Tài liệu này hướng dẫn chạy PostgreSQL local và áp dụng migration
 
    Lệnh này chỉ khởi động service PostgreSQL và giữ dữ liệu trong volume Docker `postgres_data`.
 
-3. Áp dụng toàn bộ migration đang có:
-
-   ```bash
-   make migrate-up
-   ```
-
-4. Khởi động API:
+3. Khởi động API (migration tự chạy trước khi HTTP sẵn sàng):
 
    ```bash
    make deps
@@ -43,13 +37,13 @@ API mặc định chạy tại `http://localhost:8080`.
 
 ## Chạy toàn bộ bằng Docker Compose
 
-Sau khi tạo `configs/.env`, có thể để app và PostgreSQL chạy cùng Compose:
+Sau khi tạo `configs/.env` cho Compose, có thể để app và PostgreSQL chạy cùng Compose:
 
 ```bash
 make docker-up-all
 ```
 
-Trong container, app dùng hostname `postgres`. App sẽ chạy migration khi khởi động, nên không cần chạy `make migrate-up` từ host cho luồng này.
+Trong container, app dùng hostname `postgres`. Migration SQL đã được nhúng vào binary và chạy khi khởi động, nên không cần chạy `make migrate-up` từ host cho luồng này.
 
 ## Xử lý lỗi thường gặp
 
@@ -63,6 +57,6 @@ Trong container, app dùng hostname `postgres`. App sẽ chạy migration khi kh
 
 - Không kết nối được tới database: kiểm tra trạng thái bằng `docker compose ps postgres` và log bằng `docker compose logs postgres`.
 
-- Port `5432` đã được sử dụng: đổi `DB_PORT` trong `configs/.env`, sau đó khởi động lại PostgreSQL và chạy migration với cùng cấu hình.
+- Port `5432` trên host đã được sử dụng: chạy `DB_PORT=55432 make docker-up` và đặt `DB_PORT=55432` trong `.env.local` cho app chạy trên host. Với app chạy trong Compose, giữ `DB_PORT=5432` trong `configs/.env` vì app kết nối tới cổng nội bộ của service `postgres`.
 
 Không chạy `make migrate-down` hoặc `make docker-down-v` trên dữ liệu cần giữ lại; các lệnh này có thể rollback schema hoặc xóa volume database.

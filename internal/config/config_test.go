@@ -2,6 +2,8 @@ package config
 
 import (
 	"net/url"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -105,4 +107,41 @@ func TestMigrationURLUsesPostgresURLFormat(t *testing.T) {
 	if got := parsed.Query().Get("sslmode"); got != "disable" {
 		t.Fatalf("MigrationURL() sslmode = %q, want disable", got)
 	}
+}
+
+func TestLoadEnvFilePriority(t *testing.T) {
+	setConfigBaseline(t)
+	localFile := filepath.Join(t.TempDir(), ".env.local")
+	legacyFile := filepath.Join(t.TempDir(), ".env")
+	if err := os.WriteFile(localFile, []byte("DB_HOST=local-db\n"), 0600); err != nil {
+		t.Fatalf("write local env file: %v", err)
+	}
+	if err := os.WriteFile(legacyFile, []byte("DB_HOST=legacy-db\n"), 0600); err != nil {
+		t.Fatalf("write legacy env file: %v", err)
+	}
+
+	t.Run("first file wins", func(t *testing.T) {
+		t.Setenv("DB_HOST", "")
+		if err := os.Unsetenv("DB_HOST"); err != nil {
+			t.Fatalf("unset DB_HOST: %v", err)
+		}
+		cfg, err := Load(localFile, legacyFile)
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+		if cfg.DBHost != "local-db" {
+			t.Fatalf("DBHost = %q, want local-db", cfg.DBHost)
+		}
+	})
+
+	t.Run("process environment wins", func(t *testing.T) {
+		t.Setenv("DB_HOST", "system-db")
+		cfg, err := Load(localFile, legacyFile)
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+		if cfg.DBHost != "system-db" {
+			t.Fatalf("DBHost = %q, want system-db", cfg.DBHost)
+		}
+	})
 }

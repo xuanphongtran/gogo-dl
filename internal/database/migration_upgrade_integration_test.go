@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"os"
 	"testing"
@@ -41,15 +42,14 @@ func TestMigrationsUpgradeFromPreviousSchema(t *testing.T) {
 			t.Errorf("MigrateDown() cleanup error = %v", err)
 		}
 	})
-	if err := MigrateUp(dsn, "file://../../migrations"); err != nil {
-		t.Fatalf("upgrade MigrateUp() error = %v", err)
-	}
-
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		t.Fatalf("sql.Open() error = %v", err)
 	}
 	defer db.Close()
+	if err := MigrateUpEmbedded(context.Background(), db); err != nil {
+		t.Fatalf("upgrade MigrateUpEmbedded() error = %v", err)
+	}
 
 	var nullable string
 	if err := db.QueryRow(`

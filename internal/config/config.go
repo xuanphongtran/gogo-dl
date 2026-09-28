@@ -66,14 +66,16 @@ type Config struct {
 	WSRateBurst        int
 }
 
-// Load reads .env file (if present) then populates Config from environment variables.
-// Call this once at startup.
-func Load(envFile string) (*Config, error) {
-	// godotenv.Load is a no-op if the file doesn't exist in production.
-	if envFile != "" {
-		if err := godotenv.Load(envFile); err != nil {
-			// Not fatal — env vars may already be set (Docker, systemd, etc.)
-			fmt.Printf("[config] .env file not found (%s), using system env\n", envFile)
+// Load reads optional env files in priority order, then populates Config.
+// Existing process environment variables take precedence over the files.
+func Load(envFiles ...string) (*Config, error) {
+	for _, envFile := range envFiles {
+		if envFile == "" {
+			continue
+		}
+		// Missing files are expected in deployments that inject environment variables.
+		if err := godotenv.Load(envFile); err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("config: load %s: %w", envFile, err)
 		}
 	}
 
@@ -174,13 +176,10 @@ func (c *Config) DSN() string {
 	)
 }
 
-// MigrationURL returns the PostgreSQL URL format required by golang-migrate.
-// It is kept separate from DSN because lib/pq accepts a key-value DSN while
-// golang-migrate requires a URL with a postgres scheme.
+// MigrationURL returns a PostgreSQL URL for golang-migrate and lib/pq.
 func (c *Config) MigrationURL() string {
 	query := url.Values{}
 	query.Set("sslmode", c.DBSSLMode)
-
 	return (&url.URL{
 		Scheme:   "postgres",
 		User:     url.UserPassword(c.DBUser, c.DBPassword),
