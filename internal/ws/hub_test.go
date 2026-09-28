@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -124,7 +125,14 @@ func TestHubRevokesActiveSubscription(t *testing.T) {
 
 	select {
 	case msg := <-client.send:
-		t.Fatalf("revoked client received room event: %s", msg.data)
+		if !strings.Contains(string(msg.data), "membership_revoked") {
+			t.Fatalf("revoked client received room event: %s", msg.data)
+		}
+		select {
+		case msg := <-client.send:
+			t.Fatalf("revoked client received room event after control notice: %s", msg.data)
+		case <-time.After(100 * time.Millisecond):
+		}
 	case <-time.After(100 * time.Millisecond):
 	}
 }

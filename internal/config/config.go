@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"strconv"
@@ -171,6 +172,22 @@ func (c *Config) DSN() string {
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		c.DBHost, c.DBPort, c.DBUser, c.DBPassword, c.DBName, c.DBSSLMode,
 	)
+}
+
+// MigrationURL returns the PostgreSQL URL format required by golang-migrate.
+// It is kept separate from DSN because lib/pq accepts a key-value DSN while
+// golang-migrate requires a URL with a postgres scheme.
+func (c *Config) MigrationURL() string {
+	query := url.Values{}
+	query.Set("sslmode", c.DBSSLMode)
+
+	return (&url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(c.DBUser, c.DBPassword),
+		Host:     net.JoinHostPort(c.DBHost, c.DBPort),
+		Path:     "/" + c.DBName,
+		RawQuery: query.Encode(),
+	}).String()
 }
 
 // Addr returns the full listen address for the HTTP server.

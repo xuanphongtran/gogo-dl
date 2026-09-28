@@ -5,11 +5,13 @@ package ws
 type EventType string
 
 const (
-	EventMessage  EventType = "message"   // new chat message
-	EventJoin     EventType = "join"      // user joined a room
-	EventLeave    EventType = "leave"     // user left a room
-	EventUserList EventType = "user_list" // current room members snapshot
-	EventError    EventType = "error"     // server-side error notification
+	EventMessage           EventType = "message"   // new chat message
+	EventJoin              EventType = "join"      // user joined a room
+	EventLeave             EventType = "leave"     // user left a room
+	EventUserList          EventType = "user_list" // current room members snapshot
+	EventError             EventType = "error"     // server-side error notification
+	EventMembershipChanged EventType = "membership_changed"
+	EventInvitation        EventType = "invitation"
 )
 
 // Message is the canonical envelope for all WebSocket events.

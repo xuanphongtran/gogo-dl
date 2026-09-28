@@ -184,6 +184,14 @@ func (h *Hub) handleRevocation(req revocationRequest) {
 		if client.UserID != req.userID {
 			continue
 		}
+		client.sendJSON(Message{
+			Type:   EventError,
+			RoomID: req.roomID,
+			Payload: map[string]string{
+				"code":    "membership_revoked",
+				"message": "your room membership was revoked",
+			},
+		})
 		delete(members, clientID)
 		delete(client.rooms, req.roomID)
 	}

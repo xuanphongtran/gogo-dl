@@ -71,7 +71,8 @@ type Hub struct {
 	inbound chan inboundMessage
 
 	// broadcast carries events pushed by domain services (e.g. chat service).
-	broadcast chan BroadcastRequest
+	broadcast     chan BroadcastRequest
+	userBroadcast chan UserBroadcastRequest
 
 	// authorized carries results of room authorization work performed outside Run.
 	authorized chan authorizationResult
@@ -101,6 +102,12 @@ type Hub struct {
 // BroadcastRequest is the payload that domain services send to Hub.Broadcast().
 type BroadcastRequest struct {
 	RoomID  string
+	Message Message
+}
+
+// UserBroadcastRequest targets an event to all active connections for one user.
+type UserBroadcastRequest struct {
+	UserID  int64
 	Message Message
 }
 
@@ -136,6 +143,7 @@ func New(options ...Options) *Hub {
 		unregister:            make(chan *Client, 64),
 		inbound:               make(chan inboundMessage, 256),
 		broadcast:             make(chan BroadcastRequest, 256),
+		userBroadcast:         make(chan UserBroadcastRequest, 256),
 		authorized:            make(chan authorizationResult, 64),
 		revoke:                make(chan revocationRequest, 64),
 		admit:                 make(chan admissionRequest, 64),
@@ -235,6 +243,9 @@ func (h *Hub) Run() {
 		case req := <-h.broadcast:
 			h.fanOut(req.RoomID, req.Message, "")
 
+		case req := <-h.userBroadcast:
+			h.fanOutUser(req.UserID, req.Message)
+
 		// ── Graceful shutdown ─────────────────────────────────────────────────
 		case <-h.done:
 			// Close all client send channels so WritePump goroutines exit.
@@ -267,6 +278,19 @@ func (h *Hub) Broadcast(roomID string, msg Message) error {
 		return nil
 	default:
 		return fmt.Errorf("ws: broadcast channel full, message dropped for room %s", roomID)
+	}
+}
+
+// BroadcastToUser sends a best-effort event to every active connection for one user.
+func (h *Hub) BroadcastToUser(userID int64, msg Message) error {
+	req := UserBroadcastRequest{UserID: userID, Message: msg}
+	select {
+	case <-h.done:
+		return errHubStopped
+	case h.userBroadcast <- req:
+		return nil
+	default:
+		return fmt.Errorf("ws: user broadcast channel full, event dropped for user %d", userID)
 	}
 }
 
@@ -539,5 +563,13 @@ func (h *Hub) fanOut(roomID string, msg Message, excludeID string) {
 			continue
 		}
 		client.sendJSON(msg)
+	}
+}
+
+func (h *Hub) fanOutUser(userID int64, msg Message) {
+	for _, client := range h.clients {
+		if client.UserID == userID {
+			client.sendJSON(msg)
+		}
 	}
 }

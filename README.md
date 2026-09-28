@@ -92,6 +92,11 @@ go run ./cmd/server/main.go
 
 Server starts on `http://localhost:8080` by default.
 
+In development, interactive Swagger UI is available at
+`http://localhost:8080/swagger/index.html`. It is disabled when
+`APP_ENV=production`. Regenerate the committed API document after changing
+Swagger annotations with `make docs` (requires the Swag CLI).
+
 For internet-facing deployments, set `WS_ALLOWED_ORIGINS` to comma-separated exact `http://` or `https://` origins. Production rejects missing origins unless explicitly configured otherwise in a controlled environment. HTTP bodies, headers, WebSocket frames, connections, and in-process request rates are bounded by the `HTTP_*`, `WS_*`, `*_RATE_*`, and `*_BURST` settings in `configs/.env.example`.
 
 ---
@@ -126,8 +131,16 @@ Profile updates accept an avatar URL only when it is an absolute `http://` or
 | POST   | `/api/v1/rooms`                 | ✓    | Create a room                    |
 | GET    | `/api/v1/rooms/:id`             | ✓    | Get room details                 |
 | POST   | `/api/v1/rooms/:id/join`        | ✓    | Join a room                      |
+| DELETE | `/api/v1/rooms/:id/membership` | ✓ | Leave the current room membership |
+| GET | `/api/v1/rooms/:id/members` | ✓ | List room members and roles |
+| POST | `/api/v1/rooms/:id/invitations` | ✓ | Invite a user to a room |
+| DELETE | `/api/v1/rooms/:id/members/:user_id` | ✓ | Remove a room member |
+| PATCH | `/api/v1/rooms/:id/members/:user_id` | ✓ | Change member role |
+| POST | `/api/v1/rooms/:id/ownership` | ✓ | Transfer room ownership |
 | GET    | `/api/v1/rooms/:id/messages`    | ✓    | List messages (cursor pagination)|
 | POST   | `/api/v1/rooms/:id/messages`    | ✓    | Send a message (+ WS broadcast)  |
+
+Invitation actions use `GET /api/v1/users/me/invitations`, `POST /api/v1/invitations/:id/accept`, and `POST /api/v1/invitations/:id/decline`. Public rooms can be discovered and joined by authenticated users; private rooms require an accepted invitation. Message history and WebSocket subscriptions require current membership.
 
 ### WebSocket
 

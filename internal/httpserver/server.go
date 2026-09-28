@@ -8,6 +8,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
+	_ "github.com/xuanphongtran/gogo-dl/docs/swagger"
 	"github.com/xuanphongtran/gogo-dl/internal/chat"
 	"github.com/xuanphongtran/gogo-dl/internal/config"
 	"github.com/xuanphongtran/gogo-dl/internal/middleware"
@@ -17,6 +20,22 @@ import (
 // Server wraps the standard library http.Server with graceful-shutdown support.
 type Server struct {
 	httpServer *http.Server
+}
+
+// HealthResponse is returned by the unauthenticated health endpoint.
+type HealthResponse struct {
+	Status string    `json:"status"`
+	Time   time.Time `json:"time"`
+}
+
+// health godoc
+// @Summary      Check server health
+// @Tags         system
+// @Produce      json
+// @Success      200  {object} HealthResponse
+// @Router       /health [get]
+func health(c *gin.Context) {
+	c.JSON(http.StatusOK, HealthResponse{Status: "ok", Time: time.Now().UTC()})
 }
 
 // New creates the Gin engine, registers all middleware and routes, and returns a
@@ -48,9 +67,13 @@ func New(
 	r.Use(middleware.CORS(cfg))
 
 	// ── Health check (no auth) ────────────────────────────────────────────────
-	r.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok", "time": time.Now().UTC()})
-	})
+	r.GET("/health", health)
+
+	// Swagger is intentionally available only outside production. The generated
+	// document contains the public API contract but does not provide auth.
+	if !cfg.IsProd() {
+		r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	}
 
 	// ── API v1 ────────────────────────────────────────────────────────────────
 	v1 := r.Group("/api/v1")
@@ -68,6 +91,7 @@ func New(
 	// ── Register domain routes ────────────────────────────────────────────────
 	userHandler.RegisterRoutes(public, private)
 	chatHandler.RegisterRoutes(private)
+	chatHandler.RegisterMembershipRoutes(private)
 
 	// WebSocket upgrades need a peer limit before JWT validation and an
 	// authenticated user+peer limit after validation.

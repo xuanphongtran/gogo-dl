@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"net/url"
+	"testing"
+)
 
 func setConfigBaseline(t *testing.T) {
 	t.Helper()
@@ -76,5 +79,30 @@ func TestLoadRejectsMalformedOrigin(t *testing.T) {
 	t.Setenv("WS_ALLOWED_ORIGINS", "*")
 	if _, err := Load(""); err == nil {
 		t.Fatal("Load() accepted wildcard WebSocket origin")
+	}
+}
+
+func TestMigrationURLUsesPostgresURLFormat(t *testing.T) {
+	cfg := &Config{
+		DBHost: "localhost", DBPort: "5432", DBUser: "postgres", DBPassword: "p@ss word",
+		DBName: "gogo_dl", DBSSLMode: "disable",
+	}
+
+	parsed, err := url.Parse(cfg.MigrationURL())
+	if err != nil {
+		t.Fatalf("MigrationURL() returned invalid URL: %v", err)
+	}
+	if parsed.Scheme != "postgres" || parsed.Host != "localhost:5432" || parsed.Path != "/gogo_dl" {
+		t.Fatalf("MigrationURL() = %q, want postgres://...@localhost:5432/gogo_dl", parsed.String())
+	}
+	if parsed.User.Username() != "postgres" {
+		t.Fatalf("MigrationURL() username = %q, want postgres", parsed.User.Username())
+	}
+	password, ok := parsed.User.Password()
+	if !ok || password != "p@ss word" {
+		t.Fatalf("MigrationURL() password = %q, want original password", password)
+	}
+	if got := parsed.Query().Get("sslmode"); got != "disable" {
+		t.Fatalf("MigrationURL() sslmode = %q, want disable", got)
 	}
 }
