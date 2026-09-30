@@ -1,7 +1,7 @@
 # 05 — Room Membership and Roles
 
 **Priority:** P1  
-**Status:** In progress — implementation complete; PostgreSQL verification pending
+**Status:** Pending — deferred at the user's request; follow-up fixes and PostgreSQL verification outstanding
 **Depends on:** 02, 03, 04
 
 ## Goal
@@ -36,3 +36,8 @@ Resolved in [spec/05-room-membership-roles.md](../spec/05-room-membership-roles.
 Implementation is complete for the HTTP, service, repository, migration, and
 WebSocket paths. The remaining verification requires a disposable PostgreSQL
 database with representative room, membership, and invitation data.
+
+Deferred review fixes include idempotent public leave retries and atomic
+member-removal authorization. Phase 06 uses the current role/membership contract
+and locks authorization state for its own mutations; Phase 05 verification stays
+separate.

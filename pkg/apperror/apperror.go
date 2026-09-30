@@ -27,6 +27,8 @@ var (
 	ErrAccountOwnsRooms    = &AppError{Code: http.StatusConflict, Message: "cannot delete account while owning rooms"}
 	ErrOwnerTransfer       = &AppError{Code: http.StatusConflict, Message: "owner transfer required"}
 	ErrInvitationState     = &AppError{Code: http.StatusConflict, Message: "invitation is no longer pending"}
+	ErrMessageDeleted      = &AppError{Code: http.StatusConflict, Message: "message deleted"}
+	ErrMessageRevision     = &AppError{Code: http.StatusConflict, Message: "message revision conflict"}
 	ErrBadRequest          = &AppError{Code: http.StatusBadRequest, Message: "bad request"}
 	ErrInvalidRequest      = &AppError{Code: http.StatusBadRequest, Message: "invalid request"}
 	ErrRequestBodyTooLarge = &AppError{Code: http.StatusRequestEntityTooLarge, Message: "request body too large"}

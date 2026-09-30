@@ -34,6 +34,8 @@ func (h *Handler) RegisterRoutes(private *gin.RouterGroup, wsMiddleware ...gin.H
 		rooms.POST("/:id/join", h.JoinRoom)
 		rooms.GET("/:id/messages", h.ListMessages)
 		rooms.POST("/:id/messages", h.SendMessage)
+		rooms.PATCH("/:id/messages/:message_id", h.EditMessage)
+		rooms.DELETE("/:id/messages/:message_id", h.DeleteMessage)
 	}
 
 	// Keep the optional middleware argument for callers that register the
@@ -226,15 +228,7 @@ func (h *Handler) SendMessage(c *gin.Context) {
 		return
 	}
 
-	// Pull username from token claims (avoids an extra DB round-trip for the username).
-	username := fmt.Sprintf("user_%d", userID)
-	if rawClaims, exists := c.Get(middleware.ContextKeyClaims); exists {
-		if mc, ok := rawClaims.(*middleware.Claims); ok {
-			username = fmt.Sprintf("user_%d", mc.UserID)
-		}
-	}
-
-	msg, err := h.svc.SendMessage(c.Request.Context(), userID, roomID, &req, username)
+	msg, err := h.svc.SendMessage(c.Request.Context(), userID, roomID, &req, "")
 	if err != nil {
 		apperror.Respond(c, err)
 		return

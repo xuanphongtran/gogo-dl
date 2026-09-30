@@ -144,8 +144,48 @@ Profile updates accept an avatar URL only when it is an absolute `http://` or
 | POST | `/api/v1/rooms/:id/ownership` | ✓ | Transfer room ownership |
 | GET    | `/api/v1/rooms/:id/messages`    | ✓    | List messages (cursor pagination)|
 | POST   | `/api/v1/rooms/:id/messages`    | ✓    | Send a message (+ WS broadcast)  |
+| PATCH | `/api/v1/rooms/:id/messages/:message_id` | ✓ | Edit my message using its revision |
+| DELETE | `/api/v1/rooms/:id/messages/:message_id` | ✓ | Delete a message and return its tombstone |
 
 Invitation actions use `GET /api/v1/users/me/invitations`, `POST /api/v1/invitations/:id/accept`, and `POST /api/v1/invitations/:id/decline`. Public rooms can be discovered and joined by authenticated users; private rooms require an accepted invitation. Message history and WebSocket subscriptions require current membership.
+
+### Message lifecycle
+
+Messages include `revision` (initially `1`), `edited_at` and `deleted_at` (nullable
+UTC timestamps). The author must remain a room member to edit, with no edit time
+limit. Owners and moderators can delete any message in their room; only the
+author can edit its text. A public-room non-member receives `403`; a private-room
+non-member receives `404` for either mutation.
+Message creation resolves the author's username from PostgreSQL, matching
+history and lifecycle event projections.
+
+To edit, send `PATCH /api/v1/rooms/:id/messages/:message_id`:
+
+```json
+{ "content": "Updated text", "revision": 1 }
+```
+
+The response is `200` with the complete Message. Content has the same validation
+and 4000-byte limit as sending. Changed text increments revision and sets
+`edited_at`. Equal text at the current revision, or an immediate identical retry
+using the previous revision, returns the current Message without another event.
+Other stale revisions return `409` (`message revision conflict`); reload history
+before deciding whether to retry. Editing a deleted message returns `409`
+(`message deleted`).
+
+`DELETE /api/v1/rooms/:id/messages/:message_id` has no body and returns `200` with
+a tombstone: empty `content`, non-null `deleted_at`, and an incremented revision.
+Authorized repeated deletes return the same tombstone without changing revision,
+timestamps or audit actor. Deletion applies to the current message version.
+History retains tombstones and continues paginating by immutable message ID.
+Deletion clears the current database row's content; database backups and client
+copies have separate retention. There is no restore or edit-history endpoint.
+
+Membership, current roles and message state are locked until the mutation commits.
+Internal deletion audit retains actor and time; deleting that actor's account
+sets the audit reference to null. See the [Phase 6 specification](spec/06-message-lifecycle.md)
+for concurrency, retry and retention details. Migration `000006` is embedded and
+applies automatically before the updated server accepts requests.
 
 ### WebSocket
 
@@ -173,6 +213,15 @@ Once connected, send/receive JSON envelopes:
 }
 ```
 
+Server-only `message_updated` and `message_deleted` events use this same envelope
+with a complete Message payload, including numeric `room_id`, `revision`,
+`edited_at` and `deleted_at`. The envelope `room_id` remains a string. New
+`message` events also include those additive fields. Lifecycle events are emitted
+after the database commit; retries/no-ops emit no additional event. Delivery is
+best effort. For a known message, apply only greater revisions so a late edit
+cannot overwrite a tombstone. Refresh relevant history after reconnect or a gap;
+event arrival order is not guaranteed. Clients may send only `join` and `leave`.
+
 ---
 
 ## Makefile commands
@@ -198,6 +247,11 @@ Unit and WebSocket tests run without external services. PostgreSQL integration t
     TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/gogo_dl_test?sslmode=disable go test -race -count=1 ./...
 
 The integration suite covers clean migration, upgrade from migration 000001, rollback, transaction integrity, deleted-author history, and typed constraint mapping.
+
+Phase 6 integration tests additionally cover upgrade from schema 000005,
+lifecycle constraints, tombstone pagination/audit, write rollback, concurrent
+edits/deletes, and membership locking. They require a disposable database whose
+name ends in `_test` and reset its data/schema during cleanup.
 
 ## Architecture notes
 

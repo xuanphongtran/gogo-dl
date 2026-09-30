@@ -49,7 +49,7 @@ func (r *explicitRepository) ListMessages(ctx context.Context, roomID int64, lim
 	const projection = `
 		SELECT m.id, m.room_id, m.user_id,
 		       COALESCE(u.username, '[deleted user]') AS username,
-		       m.content, m.created_at
+		       m.content, m.created_at, m.revision, m.edited_at, m.deleted_at
 		FROM messages m
 		LEFT JOIN users u ON u.id = m.user_id
 		WHERE m.room_id = $1`
