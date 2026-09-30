@@ -44,12 +44,14 @@ func TestHubAuthorizationDoesNotBlockEventLoop(t *testing.T) {
 	if joined.Type != EventJoin || joined.RoomID != "1" {
 		t.Fatalf("join event = %+v, want authorized join", joined)
 	}
+	readJoinSnapshot(t, client)
 }
 
 func TestHubSlowConsumerDoesNotBlockEventLoop(t *testing.T) {
 	hub, client := startTestHub(t, fakeRoomAuthorizer{})
 	sendCommand(hub, client, Message{Type: EventJoin, RoomID: "1"})
 	_ = readClientMessage(t, client)
+	readJoinSnapshot(t, client)
 	for i := 0; i < cap(client.send); i++ {
 		client.send <- outboundMessage{data: []byte("queued")}
 	}
@@ -84,7 +86,8 @@ func TestHubLeaveRemovesSubscription(t *testing.T) {
 	hub, client := startTestHub(t, fakeRoomAuthorizer{})
 	sendCommand(hub, client, Message{Type: EventJoin, RoomID: "1"})
 	_ = readClientMessage(t, client)
-	sendCommand(hub, client, Message{Type: EventLeave, RoomID: "1"})
+	readJoinSnapshot(t, client)
+	sendCommandAndWait(t, hub, client, Message{Type: EventLeave, RoomID: "1"})
 
 	if err := hub.Broadcast("1", Message{Type: EventMessage, RoomID: "1"}); err != nil {
 		t.Fatalf("Broadcast() error = %v", err)
