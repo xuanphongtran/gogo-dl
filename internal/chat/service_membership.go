@@ -66,16 +66,33 @@ func (s *Service) ListMembers(ctx context.Context, actorID, roomID int64) ([]*Ro
 func (s *Service) LeaveRoom(ctx context.Context, userID, roomID int64) error {
 	member, err := s.repo.GetMember(ctx, roomID, userID)
 	if err != nil {
+		if errors.Is(err, apperror.ErrNotFound) {
+			return s.leaveMissingMembership(ctx, roomID)
+		}
 		return err
 	}
 	if member.Role == RoomRoleOwner {
 		return apperror.ErrOwnerTransfer
 	}
 	if err := s.repo.RemoveMember(ctx, roomID, userID); err != nil {
+		if errors.Is(err, apperror.ErrNotFound) {
+			return s.leaveMissingMembership(ctx, roomID)
+		}
 		return err
 	}
 	s.revokeMembership(ctx, roomID, userID)
 	s.broadcastMembership(roomID, "left", userID, member.Role, userID)
+	return nil
+}
+
+func (s *Service) leaveMissingMembership(ctx context.Context, roomID int64) error {
+	room, err := s.repo.GetRoomByID(ctx, roomID)
+	if err != nil {
+		return err
+	}
+	if room.Visibility != RoomVisibilityPublic {
+		return apperror.ErrNotFound
+	}
 	return nil
 }
 
@@ -156,27 +173,25 @@ func (s *Service) RespondInvitation(ctx context.Context, userID, invitationID in
 // RemoveMember removes a target after checking the actor's role. It is not a
 // permanent ban; public users may join again explicitly after removal.
 func (s *Service) RemoveMemberAs(ctx context.Context, actorID, roomID, targetID int64) error {
-	actor, err := s.repo.GetMember(ctx, roomID, actorID)
-	if err != nil {
-		if errors.Is(err, apperror.ErrNotFound) {
+	target, err := s.repo.RemoveMemberWithAuthorization(ctx, roomID, actorID, targetID, func(actor, target *RoomMember) error {
+		if actor == nil {
 			return apperror.ErrForbidden
 		}
-		return err
-	}
-	target, err := s.repo.GetMember(ctx, roomID, targetID)
+		if target == nil {
+			return apperror.ErrNotFound
+		}
+		if target.Role == RoomRoleOwner {
+			return apperror.ErrForbidden
+		}
+		if actor.Role == RoomRoleModerator && target.Role != RoomRoleMember {
+			return apperror.ErrForbidden
+		}
+		if actor.Role != RoomRoleOwner && actor.Role != RoomRoleModerator {
+			return apperror.ErrForbidden
+		}
+		return nil
+	})
 	if err != nil {
-		return err
-	}
-	if target.Role == RoomRoleOwner {
-		return apperror.ErrForbidden
-	}
-	if actor.Role == RoomRoleModerator && target.Role != RoomRoleMember {
-		return apperror.ErrForbidden
-	}
-	if actor.Role != RoomRoleOwner && actor.Role != RoomRoleModerator {
-		return apperror.ErrForbidden
-	}
-	if err := s.repo.RemoveMember(ctx, roomID, targetID); err != nil {
 		return err
 	}
 	s.revokeMembership(ctx, roomID, targetID)

@@ -147,6 +147,10 @@ Profile updates accept an avatar URL only when it is an absolute `http://` or
 
 Invitation actions use `GET /api/v1/users/me/invitations`, `POST /api/v1/invitations/:id/accept`, and `POST /api/v1/invitations/:id/decline`. Public rooms can be discovered and joined by authenticated users; private rooms require an accepted invitation. Message history and WebSocket subscriptions require current membership.
 
+Leaving a public room returns `204` even when the caller is no longer a member,
+so retries are safe. A private room without membership, or a missing room,
+returns `404`. Owners must transfer ownership before leaving (`409`).
+
 ### WebSocket
 
 ```

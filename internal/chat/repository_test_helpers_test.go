@@ -80,6 +80,31 @@ func expectMemberError(mock sqlmock.Sqlmock, roomID, userID int64, err error) {
 		WillReturnError(err)
 }
 
+func expectRemovalMembers(mock sqlmock.Sqlmock, roomID, actorID, targetID int64, actorRole, targetRole RoomRole, lookupErr error) {
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id FROM rooms WHERE id = $1 FOR UPDATE`)).
+		WithArgs(roomID).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(roomID))
+	query := mock.ExpectQuery(regexp.QuoteMeta(`SELECT rm.room_id, rm.user_id, u.username, rm.role, rm.joined_at
+		FROM room_members rm
+		JOIN users u ON u.id = rm.user_id
+		WHERE rm.room_id = $1 AND rm.user_id IN ($2, $3)
+		ORDER BY rm.user_id
+		FOR UPDATE OF rm`)).WithArgs(roomID, actorID, targetID)
+	if lookupErr != nil {
+		query.WillReturnError(lookupErr)
+		return
+	}
+	rows := sqlmock.NewRows([]string{"room_id", "user_id", "username", "role", "joined_at"})
+	if actorRole != "" {
+		rows.AddRow(roomID, actorID, "actor", actorRole, time.Now())
+	}
+	if targetRole != "" {
+		rows.AddRow(roomID, targetID, "target", targetRole, time.Now())
+	}
+	query.WillReturnRows(rows)
+}
+
 func expectMembershipCount(mock sqlmock.Sqlmock, roomID, userID int64, member bool) {
 	count := 0
 	if member {
