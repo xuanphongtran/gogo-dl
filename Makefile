@@ -14,7 +14,7 @@ MIGRATE_URL ?= $(shell grep DB_ $(ENV_FILE) 2>/dev/null | \
 MIGRATIONS_DIR := migrations
 
 # ── Phony targets ──────────────────────────────────────────────────────────────
-.PHONY: all run build clean test lint docs \
+.PHONY: all run build clean test lint docs docs-asyncapi \
         migrate-up migrate-down migrate-create \
         deps tidy docker-up docker-down
 
@@ -70,6 +70,13 @@ docs:
 		exit 1; \
 	fi
 	swag init -g cmd/server/main.go -d . --parseInternal --parseDependency -o docs/swagger
+
+## docs-asyncapi: Regenerate embedded AsyncAPI HTML (requires Node.js 22)
+docs-asyncapi:
+	@node -e 'if (Number(process.versions.node.split(".")[0]) !== 22) { console.error("Run nvm use 22 first"); process.exit(1); }'
+	PUPPETEER_SKIP_DOWNLOAD=1 npx --yes @asyncapi/cli@4.1.1 generate fromTemplate docs/asyncapi.yaml @asyncapi/html-template@2.3.14 --install --no-interactive --force-write -o docs/asyncapi
+	cp docs/asyncapi.yaml docs/asyncapi/asyncapi.yaml
+	@node -e 'const fs = require("node:fs"); const crypto = require("node:crypto"); fs.writeFileSync("docs/asyncapi/source.sha256", crypto.createHash("sha256").update(fs.readFileSync("docs/asyncapi.yaml")).digest("hex") + "\n");'
 
 # ── Database migrations ────────────────────────────────────────────────────────
 

@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
+	"github.com/xuanphongtran/gogo-dl/docs"
 	_ "github.com/xuanphongtran/gogo-dl/docs/swagger"
 	"github.com/xuanphongtran/gogo-dl/internal/chat"
 	"github.com/xuanphongtran/gogo-dl/internal/config"
@@ -85,10 +86,13 @@ func New(
 	r.GET("/readyz", s.readyHTTP)
 	r.GET("/readyz/realtime", s.readyRealtime)
 
-	// Swagger is intentionally available only outside production. The generated
+	// API documentation is intentionally available only outside production. The generated
 	// document contains the public API contract but does not provide auth.
 	if !cfg.IsProd() {
 		r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+		asyncAPI := gin.WrapH(http.StripPrefix("/asyncapi", docs.AsyncAPIHandler()))
+		r.GET("/asyncapi/*any", asyncAPI)
+		r.HEAD("/asyncapi/*any", asyncAPI)
 	}
 
 	// ── API v1 ────────────────────────────────────────────────────────────────
