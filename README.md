@@ -144,6 +144,8 @@ Profile updates accept an avatar URL only when it is an absolute `http://` or
 | POST | `/api/v1/rooms/:id/ownership` | ✓ | Transfer room ownership |
 | GET    | `/api/v1/rooms/:id/messages`    | ✓    | List messages (cursor pagination)|
 | POST   | `/api/v1/rooms/:id/messages`    | ✓    | Send a message (+ WS broadcast)  |
+| PATCH | `/api/v1/rooms/:id/messages/:message_id` | ✓ | Edit my message using its revision |
+| DELETE | `/api/v1/rooms/:id/messages/:message_id` | ✓ | Delete a message and return its tombstone |
 | GET | `/api/v1/rooms/:id/presence` | ✓ | Room presence and typing snapshot |
 | GET | `/api/v1/rooms/:id/read-state` | ✓ | My read cursor and unread count |
 | PUT | `/api/v1/rooms/:id/read-state` | ✓ | Advance my read cursor |
@@ -153,6 +155,44 @@ Invitation actions use `GET /api/v1/users/me/invitations`, `POST /api/v1/invitat
 Leaving a public room returns `204` even when the caller is no longer a member,
 so retries are safe. A private room without membership, or a missing room,
 returns `404`. Owners must transfer ownership before leaving (`409`).
+
+### Message lifecycle
+
+Messages include `revision` (initially `1`), `edited_at` and `deleted_at` (nullable
+UTC timestamps). The author must remain a room member to edit, with no edit time
+limit. Owners and moderators can delete any message in their room; only the
+author can edit its text. A public-room non-member receives `403`; a private-room
+non-member receives `404` for either mutation.
+Message creation resolves the author's username from PostgreSQL, matching
+history and lifecycle event projections.
+
+To edit, send `PATCH /api/v1/rooms/:id/messages/:message_id`:
+
+```json
+{ "content": "Updated text", "revision": 1 }
+```
+
+The response is `200` with the complete Message. Content has the same validation
+and 4000-byte limit as sending. Changed text increments revision and sets
+`edited_at`. Equal text at the current revision, or an immediate identical retry
+using the previous revision, returns the current Message without another event.
+Other stale revisions return `409` (`message revision conflict`); reload history
+before deciding whether to retry. Editing a deleted message returns `409`
+(`message deleted`).
+
+`DELETE /api/v1/rooms/:id/messages/:message_id` has no body and returns `200` with
+a tombstone: empty `content`, non-null `deleted_at`, and an incremented revision.
+Authorized repeated deletes return the same tombstone without changing revision,
+timestamps or audit actor. Deletion applies to the current message version.
+History retains tombstones and continues paginating by immutable message ID.
+Deletion clears the current database row's content; database backups and client
+copies have separate retention. There is no restore or edit-history endpoint.
+
+Membership, current roles and message state are locked until the mutation commits.
+Internal deletion audit retains actor and time; deleting that actor's account
+sets the audit reference to null. See the [Phase 6 specification](spec/06-message-lifecycle.md)
+for concurrency, retry and retention details. Migration `000006` is embedded and
+applies automatically before the updated server accepts requests.
 
 ### Presence and personal read state
 
@@ -178,7 +218,7 @@ To acknowledge history through a message, use `PUT` on the same path with
 (`404` otherwise). The cursor only increases; valid equal/older retries return
 the current state. An unset cursor is `0`. Unread counts all room message IDs
 above the cursor except your own messages, including history before joining and
-deleted-author messages. Future message tombstones count by ID; edits/deletes
+deleted-author messages. Message tombstones count by ID; edits/deletes
 do not create another unread item. Reading history does not advance the cursor.
 Leaving/removal clears it, and rejoining starts at `0`.
 
@@ -187,18 +227,39 @@ to your connections. Other members do not receive read receipts. Events are
 best effort; after reconnect, reload GET for an authoritative count. Keep the
 maximum cursor when processing out-of-order events; old counts may be stale.
 
-Phase 7 carries the exact migration `000006` from Phase 6 as a schema prerequisite
-followed by `000007` for read cursors. Lifecycle endpoints remain on the Phase 6
-branch. Apply migrations in order: deploying `000007` without `000006` prevents
-the migration runner from discovering `000006` on a later merge.
+Message lifecycle and read-state endpoints are included together. Embedded
+migration `000006` provides message lifecycle fields, followed by `000007` for
+read cursors. Both apply automatically in order before the server accepts requests.
 
 ### WebSocket
+
+The machine-readable WebSocket contract is [docs/asyncapi.yaml](docs/asyncapi.yaml)
+(AsyncAPI 3.0). It lists the handshake authentication options, client commands,
+server events, payload schemas, and examples. Swagger covers the REST API;
+AsyncAPI covers WebSocket messages. To validate or render the document locally
+with the [AsyncAPI CLI](https://www.asyncapi.com/docs/tools/cli/usage) (requires
+Node.js 22 via nvm):
+
+```bash
+nvm use 22
+npx --yes @asyncapi/cli@4.1.1 validate docs/asyncapi.yaml
+PUPPETEER_SKIP_DOWNLOAD=1 npx --yes @asyncapi/cli@4.1.1 generate fromTemplate docs/asyncapi.yaml @asyncapi/html-template@2.3.14 --install --no-interactive -o /tmp/gogo-dl-asyncapi
+```
+
+The generated HTML is a local documentation artifact; the Go server does not
+serve it. Update `docs/asyncapi.yaml` whenever the WebSocket contract changes.
 
 ```
 GET /api/v1/ws?token=<access_token>
 ```
 
-Once connected, send/receive JSON envelopes:
+Clients may send `join`, `leave`, `typing_started` and `typing_stopped` commands. `join` requires current room
+membership; use the REST room endpoints to join a public room or accept a private
+room invitation first. A `leave` command ends only the WebSocket subscription.
+To send a durable chat message, call `POST /api/v1/rooms/:id/messages` and then
+receive its WebSocket broadcast. The server can send several newline-separated
+JSON events in one WebSocket text frame; parse each nonempty line separately.
+Send one JSON command per client frame. For example:
 
 ```jsonc
 // Join a room
@@ -229,6 +290,15 @@ Once connected, send/receive JSON envelopes:
 // Delivered only to this user's connections after the cursor commits
 { "type": "read_state", "room_id": "1", "payload": { "room_id": 1, "last_read_message_id": 42, "unread_count": 3 } }
 ```
+
+Server-only `message_updated` and `message_deleted` events use this same envelope
+with a complete Message payload, including numeric `room_id`, `revision`,
+`edited_at` and `deleted_at`. The envelope `room_id` remains a string. New
+`message` events also include those additive fields. Lifecycle events are emitted
+after the database commit; retries/no-ops emit no additional event. Delivery is
+best effort. For a known message, apply only greater revisions so a late edit
+cannot overwrite a tombstone. Refresh relevant history after reconnect or a gap;
+event arrival order is not guaranteed.
 
 Typing requires an authorized joined socket. Starts are throttled to once per
 second per connection (`rate_limited` on excess), expire in 5 seconds and are
@@ -274,6 +344,11 @@ Phase 7 tests additionally cover upgrade from schema 5, concurrent read advances
 membership locking, unread counts and leave/rejoin cursor cleanup. Use a fresh
 disposable database whose name ends in `_test`; the Phase 7 fixture refuses an
 existing application schema. Its cleanup drops only that test database's schema.
+
+Phase 6 integration tests additionally cover upgrade from schema 000005,
+lifecycle constraints, tombstone pagination/audit, write rollback, concurrent
+edits/deletes, and membership locking. They require a disposable database whose
+name ends in `_test` and reset its data/schema during cleanup.
 
 ## Architecture notes
 

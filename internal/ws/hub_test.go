@@ -103,12 +103,15 @@ func TestHubRejectsUnauthorizedRoomJoin(t *testing.T) {
 }
 
 func TestHubRejectsForgedClientEvent(t *testing.T) {
-	hub, client := startTestHub(t, fakeRoomAuthorizer{})
-
-	sendCommand(hub, client, Message{Type: EventMessage, RoomID: "1", Payload: map[string]string{"user_id": "999"}})
-	got := readClientMessage(t, client)
-	if got.Type != EventError {
-		t.Fatalf("event type = %q, want error", got.Type)
+	for _, event := range []EventType{EventMessage, EventMessageUpdated, EventMessageDeleted} {
+		t.Run(string(event), func(t *testing.T) {
+			hub, client := startTestHub(t, fakeRoomAuthorizer{})
+			sendCommand(hub, client, Message{Type: event, RoomID: "1", Payload: map[string]string{"user_id": "999"}})
+			got := readClientMessage(t, client)
+			if got.Type != EventError {
+				t.Fatalf("event type=%q, want error", got.Type)
+			}
+		})
 	}
 }
 

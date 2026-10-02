@@ -116,7 +116,8 @@ func expectMembershipCount(mock sqlmock.Sqlmock, roomID, userID int64, member bo
 }
 
 func expectCreatedMessage(mock sqlmock.Sqlmock, roomID, userID int64, content string) {
-	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO messages (room_id, user_id, content) VALUES (?, ?, ?) RETURNING id, created_at")).
+	mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO messages (room_id, user_id, content) VALUES (?, ?, ?) RETURNING id, created_at, revision,
+        COALESCE((SELECT username FROM users WHERE users.id = messages.user_id), '[deleted user]') AS username`)).
 		WithArgs(roomID, userID, content).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(20), time.Now()))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "revision", "username"}).AddRow(int64(20), time.Now(), int64(1), "alice"))
 }

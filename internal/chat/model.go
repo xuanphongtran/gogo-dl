@@ -41,12 +41,15 @@ type Room struct {
 
 // Message is a single chat message sent within a room.
 type Message struct {
-	ID        int64     `db:"id"         json:"id"`
-	RoomID    int64     `db:"room_id"    json:"room_id"`
-	UserID    *int64    `db:"user_id"    json:"user_id"`
-	Username  string    `db:"username"   json:"username"` // joined from users table
-	Content   string    `db:"content"    json:"content"`
-	CreatedAt time.Time `db:"created_at" json:"created_at"`
+	ID        int64      `db:"id"         json:"id"`
+	RoomID    int64      `db:"room_id"    json:"room_id"`
+	UserID    *int64     `db:"user_id"    json:"user_id" extensions:"x-nullable"`
+	Username  string     `db:"username"   json:"username"` // joined from users table
+	Content   string     `db:"content"    json:"content"`
+	CreatedAt time.Time  `db:"created_at" json:"created_at"`
+	Revision  int64      `db:"revision"   json:"revision" minimum:"1"`
+	EditedAt  *time.Time `db:"edited_at"  json:"edited_at" extensions:"x-nullable" format:"date-time"`
+	DeletedAt *time.Time `db:"deleted_at" json:"deleted_at" extensions:"x-nullable" format:"date-time"`
 }
 
 // RoomMember links a user to a room (for membership tracking).
@@ -103,6 +106,12 @@ type ListInvitationsQuery struct {
 // SendMessageRequest is the body for POST /rooms/:id/messages.
 type SendMessageRequest struct {
 	Content string `json:"content" binding:"required,min=1,max=4000"`
+}
+
+// EditMessageRequest contains new content and the message revision being edited.
+type EditMessageRequest struct {
+	Content  string `json:"content" binding:"required,min=1,max=4000"`
+	Revision int64  `json:"revision" binding:"required,min=1"`
 }
 
 // ListMessagesQuery is the query string for GET /rooms/:id/messages.

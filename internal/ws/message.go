@@ -7,7 +7,9 @@ import "time"
 type EventType string
 
 const (
-	EventMessage           EventType = "message"   // new chat message
+	EventMessage           EventType = "message" // new chat message
+	EventMessageUpdated    EventType = "message_updated"
+	EventMessageDeleted    EventType = "message_deleted"
 	EventJoin              EventType = "join"      // user joined a room
 	EventLeave             EventType = "leave"     // user left a room
 	EventUserList          EventType = "user_list" // current room members snapshot

@@ -40,6 +40,8 @@ type Repository interface {
 	// Message operations
 	CreateMessage(ctx context.Context, msg *Message) error
 	ListMessages(ctx context.Context, roomID int64, limit int, beforeID int64) ([]*Message, error)
+	EditMessage(ctx context.Context, roomID, actorID, messageID int64, content string, policy MessageMutationPolicy) (*Message, bool, error)
+	DeleteMessage(ctx context.Context, roomID, actorID, messageID int64, policy MessageMutationPolicy) (*Message, bool, error)
 
 	// Read-state operations authorize against locked room and membership rows.
 	GetReadState(ctx context.Context, roomID, userID int64, authorize ReadStatePolicy) (*ReadState, error)
@@ -136,7 +138,8 @@ func (r *postgresRepository) CreateMessage(ctx context.Context, msg *Message) er
 	query := `
 		INSERT INTO messages (room_id, user_id, content)
 		VALUES (:room_id, :user_id, :content)
-		RETURNING id, created_at`
+		RETURNING id, created_at, revision,
+            COALESCE((SELECT username FROM users WHERE users.id = messages.user_id), '[deleted user]') AS username`
 
 	rows, err := r.db.NamedQueryContext(ctx, query, msg)
 	if err != nil {
@@ -147,7 +150,7 @@ func (r *postgresRepository) CreateMessage(ctx context.Context, msg *Message) er
 	if !rows.Next() {
 		return fmt.Errorf("chat repo CreateMessage: %w", sql.ErrNoRows)
 	}
-	if err := rows.Scan(&msg.ID, &msg.CreatedAt); err != nil {
+	if err := rows.Scan(&msg.ID, &msg.CreatedAt, &msg.Revision, &msg.Username); err != nil {
 		return fmt.Errorf("chat repo CreateMessage scan: %w", err)
 	}
 	if err := rows.Err(); err != nil {
@@ -171,7 +174,8 @@ func (r *postgresRepository) ListMessages(ctx context.Context, roomID int64, lim
 	// We JOIN users to get the username alongside each message.
 	if beforeID > 0 {
 		err = r.db.SelectContext(ctx, &msgs, `
-			SELECT m.id, m.room_id, m.user_id, COALESCE(u.username, '[deleted user]') AS username, m.content, m.created_at
+			SELECT m.id, m.room_id, m.user_id, COALESCE(u.username, '[deleted user]') AS username,
+                m.content, m.created_at, m.revision, m.edited_at, m.deleted_at
 			FROM messages m
 			LEFT JOIN users u ON u.id = m.user_id
 			WHERE m.room_id = $1 AND m.id < $2
@@ -181,7 +185,8 @@ func (r *postgresRepository) ListMessages(ctx context.Context, roomID int64, lim
 		)
 	} else {
 		err = r.db.SelectContext(ctx, &msgs, `
-			SELECT m.id, m.room_id, m.user_id, COALESCE(u.username, '[deleted user]') AS username, m.content, m.created_at
+			SELECT m.id, m.room_id, m.user_id, COALESCE(u.username, '[deleted user]') AS username,
+                m.content, m.created_at, m.revision, m.edited_at, m.deleted_at
 			FROM messages m
 			LEFT JOIN users u ON u.id = m.user_id
 			WHERE m.room_id = $1

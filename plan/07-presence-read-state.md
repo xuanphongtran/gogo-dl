@@ -38,11 +38,12 @@ Add responsive collaboration signals without turning ephemeral socket state into
 - Typing starts are limited to once/second per connection, expire in 5 seconds,
   and aggregate per user. Durable authorization happens outside the Hub loop.
 - Read state is private to the user. Cursor 0 includes history; own messages are
-  excluded from unread. Future Phase 06 tombstones count by ID without requiring
-  the Phase 06 application model.
+  excluded from unread. Phase 06 tombstones count by ID; edits/deletes do not
+  create another unread item.
 - Migration 000007 follows an exact copy of Phase 06's migration 000006, preserving
-  deployment order while this branch starts from main and has no lifecycle code.
-- Phase 05 deferred fixes/verification remain separate.
+  deployment order. Phase 06 lifecycle code is now included from develop.
+- Phase 05 membership review fixes are included from develop; dedicated
+  PostgreSQL verification remains separate.
 
 ## Execution sequence
 

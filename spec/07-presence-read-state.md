@@ -7,8 +7,8 @@
 ## Outcome and boundaries
 
 Members can see room presence and typing, and maintain a durable personal read
-cursor. Implementation starts from `main`, independently of Phase 06 application
-code. Phase 05 follow-up fixes and dedicated verification remain Pending.
+cursor. Phase 06 application code and Phase 05 membership review fixes are
+included from develop. Dedicated Phase 05 verification remains Pending.
 Defaults below are implementation assumptions because the roadmap leaves them
 open. No new dependencies or environment settings are needed.
 
@@ -86,9 +86,9 @@ history, joining or sending a message does not implicitly advance the cursor.
 - Unread is the count of room messages whose ID is greater than the cursor,
   excluding messages authored by this user. Deleted-author messages count.
   Cursor 0 includes all existing room history, including before membership.
-- When Phase 06 is integrated, tombstones still count by ID; editing or deleting
+- Message tombstones count by ID; editing or deleting
   does not create a new unread item or move the cursor. Counts do not depend on
-  `revision` or `deleted_at`, so this code runs against the base message model.
+  `revision` or `deleted_at`, so lifecycle mutations preserve read-state semantics.
 - Leave/removal clears the read state through its membership foreign key;
   rejoining starts at cursor 0. The cursor is a watermark, with no foreign key
   to an individual message: removing an old message must not move it backward.
@@ -121,12 +121,11 @@ composite cascading foreign key to `room_members`. The primary key matches the
 lookup/upsert; existing `(room_id, id DESC)` messages index serves counts.
 Its down migration drops only this table, losing saved cursors.
 
-Reserve migration `000006` for Phase 06. Carry its exact SQL pair into this branch
-as a schema prerequisite so clean/upgrade deployments apply 5 → 6 → 7. Existing
-message queries tolerate the added fields. Deploying 7 while omitting 6 would
+Migration `000006` provides Phase 06 lifecycle fields before migration `000007`
+so clean/upgrade deployments apply 5 → 6 → 7. Both application contracts are
+included in this branch. Deploying 7 while omitting 6 would
 cause golang-migrate to skip 6 on a later merge, so that sequence is unsupported.
-No historical migration is edited. The Phase 06 application code stays on its
-own branch. No production database is changed during implementation/testing.
+No historical migration is edited. No production database is changed during implementation/testing.
 
 ## Acceptance and verification
 

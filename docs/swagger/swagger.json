@@ -1018,6 +1018,168 @@
                 }
             }
         },
+        "/api/v1/rooms/{id}/messages/{message_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "messages"
+                ],
+                "summary": "Delete a message as author, owner or moderator",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Room ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Message ID",
+                        "name": "message_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_chat.Message"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "messages"
+                ],
+                "summary": "Edit a message authored by the current member",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Room ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Message ID",
+                        "name": "message_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Content and expected revision",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_chat.EditMessageRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_chat.Message"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/rooms/{id}/ownership": {
             "post": {
                 "security": [
@@ -1622,6 +1784,24 @@
                 }
             }
         },
+        "internal_chat.EditMessageRequest": {
+            "type": "object",
+            "required": [
+                "content",
+                "revision"
+            ],
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "maxLength": 4000,
+                    "minLength": 1
+                },
+                "revision": {
+                    "type": "integer",
+                    "minimum": 1
+                }
+            }
+        },
         "internal_chat.Invitation": {
             "type": "object",
             "properties": {
@@ -1718,14 +1898,29 @@
                 "created_at": {
                     "type": "string"
                 },
+                "deleted_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "x-nullable": true
+                },
+                "edited_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "x-nullable": true
+                },
                 "id": {
                     "type": "integer"
+                },
+                "revision": {
+                    "type": "integer",
+                    "minimum": 1
                 },
                 "room_id": {
                     "type": "integer"
                 },
                 "user_id": {
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "username": {
                     "description": "joined from users table",

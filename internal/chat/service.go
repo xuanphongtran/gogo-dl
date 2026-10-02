@@ -82,7 +82,7 @@ func (s *Service) JoinRoom(ctx context.Context, roomID, userID int64) error {
 //  2. Insert message into DB (source of truth).
 //  3. Call hub.Broadcast(roomID, wsMessage) — non-blocking channel send.
 //     The Hub's Run() goroutine fans the message out to all connected clients.
-func (s *Service) SendMessage(ctx context.Context, userID int64, roomID int64, req *SendMessageRequest, username string) (*Message, error) {
+func (s *Service) SendMessage(ctx context.Context, userID int64, roomID int64, req *SendMessageRequest, _ string) (*Message, error) {
 	if req == nil {
 		return nil, apperror.ErrInvalidRequest
 	}
@@ -106,10 +106,9 @@ func (s *Service) SendMessage(ctx context.Context, userID int64, roomID int64, r
 	}
 
 	msg := &Message{
-		RoomID:   roomID,
-		UserID:   &userID,
-		Username: username,
-		Content:  content,
+		RoomID:  roomID,
+		UserID:  &userID,
+		Content: content,
 	}
 	if err := s.repo.CreateMessage(ctx, msg); err != nil {
 		return nil, err
@@ -120,15 +119,9 @@ func (s *Service) SendMessage(ctx context.Context, userID int64, roomID int64, r
 	wsRoomID := strconv.FormatInt(roomID, 10)
 
 	wsMsg := ws.Message{
-		Type:   ws.EventMessage,
-		RoomID: wsRoomID,
-		Payload: map[string]interface{}{
-			"id":         msg.ID,
-			"user_id":    msg.UserID,
-			"username":   msg.Username,
-			"content":    msg.Content,
-			"created_at": msg.CreatedAt,
-		},
+		Type:    ws.EventMessage,
+		RoomID:  wsRoomID,
+		Payload: msg,
 	}
 
 	// Broadcast is non-blocking. Log the error but don't fail the HTTP request —
