@@ -241,6 +241,7 @@ func (h *Handler) ListMessages(c *gin.Context) {
 // @Failure      404  {object} apperror.AppError
 // @Failure      413  {object} apperror.AppError "Entire HTTP request body exceeds HTTP_MAX_BODY_BYTES"
 // @Failure      500  {object} apperror.AppError
+// @Failure      503 {object} apperror.AppError "Attachment scanner pending"
 // @Router       /api/v1/rooms/{id}/messages [post]
 func (h *Handler) SendMessage(c *gin.Context) {
 	userID := middleware.MustGetUserID(c)

@@ -2,7 +2,7 @@
 
 **Priority:** P2
 
-**Status:** In progress — 08A Done locally; 08B–08C and staging/provider gates pending
+**Status:** In progress — 08A Done locally; 08B R2 foundation implemented; scanner, 08C and staging/provider gates pending
 
 **Specification:** [Phase 8 SPEC](../spec/08-rich-messaging.md)
 
@@ -16,11 +16,11 @@ outbox is reused by notifications and Phase 9. Allocate actual migration version
 against integrated history. Phase 6 app is now integrated from `develop`; schema alone is
 insufficient. Phase 5 verification remains Pending, a release gate for membership.
 
-Defaults: PostgreSQL `simple` search, private versioned storage with separate
+Defaults: PostgreSQL `simple` search, private Cloudflare R2 with create-only keys and separate
 fail-closed scan, durable in-app mention feed. Provider/cost/scanner capability,
 retention and measured quotas are readiness decisions. External email/push,
 file-content/global search and attachment-only sends are outside scope. This plan
-provisions nothing. 08A is implemented and locally verified; 08B–08C remain proposed.
+provisions nothing. 08A is implemented and locally verified; 08B foundation is implemented; full attachments and 08C remain pending.
 
 ## 2. Inspect and establish contracts
 
@@ -28,8 +28,8 @@ provisions nothing. 08A is implemented and locally verified; 08B–08C remain pr
   Phase 7 contracts, migrations and relevant tests. Preserve user changes.
 - Trace membership transactions, lifecycle, account/room deletion, history DTOs
   and broadcast wiring; list changes in each slice before editing.
-- Provider ADR: immutable versions, upload size/hash constraints, actual scan,
-  promotion, all-version deletion, signed headers, lifecycle, TLS/cost/ownership
+- Provider ADR: immutable conditional writes, upload size/hash constraints, actual scan,
+  promotion, object deletion, signed headers, lifecycle, TLS/cost/ownership
   and recovery. Prove overwrite resistance in isolated staging.
 - Confirm bounds, inbox retention and download bearer access window.
 - Define schema, lock order and independent consumer progress before workers.
@@ -80,6 +80,26 @@ deployment was performed for this slice.
 
 ## 4. 08B — Attachments and shared outbox
 
+### Scanner-pending R2 foundation
+
+- [x] Migration 9: reservations, retained orphan tombstones, outbox intents,
+      attachment aggregate counters and independent purpose leases.
+- [x] Owner/member-authorized metadata, complete and cancel; idempotent reservation
+      persistence with 100 MiB/10 pending reservations per user and 10 GiB per room.
+- [x] Cloudflare R2 SigV4 adapter: signed create-only PUT headers and retry-safe DELETE.
+      Uses the core AWS signer locally with R2 credentials; no AWS account needed.
+- [x] Cleanup sweeper, bounded provider I/O, lease fencing, capped retries/backoff,
+      terminal dead letters and joined cancellation at shutdown.
+- [x] Closed runtime admission and explicit rejection of message attachment IDs.
+- [ ] Actual R2 staging capability/CORS/late-write tests; scanner selection and
+      exact-byte scan/promotion. Upload admission remains closed until these pass.
+- [ ] Ready/attached states, signed download, atomic message binding/retry and
+      attached-message/account lifecycle producers. These require a later migration.
+
+The checklist below tracks the complete 08B target, rather than declaring the
+scanner-pending foundation a finished attachment feature.
+
+
 Expected files: focused attachment service/repository/transport and actual store/
 scanner adapters; send/lifecycle/account cleanup wiring; new schema; worker startup/
 shutdown/config; tests/docs. Keep concrete manual composition and existing layers.
@@ -92,8 +112,8 @@ shutdown/config; tests/docs. Keep concrete manual composition and existing layer
       verdict fields or assume presigned credentials are one-use.
 - [ ] Pin exact quarantine bytes through verify/scan/promotion to immutable private
       final identity. Unknown/outage scan state cannot become ready.
-- [ ] Separate logical reservation from physical-version budget; retain quota and
-      URL admission charges after cancel until expiry + grace, delete all versions
+- [ ] Separate logical reservation from physical-object budget; retain quota and
+      URL admission charges after cancel until expiry + grace, delete all related objects
       and reconcile late uploads independently of object state.
 - [ ] Authorized signed download with 60-second bearer limitation/safe headers;
       DTOs/events/logs contain no provider keys or URLs.
@@ -106,9 +126,9 @@ shutdown/config; tests/docs. Keep concrete manual composition and existing layer
 - [ ] Config validation/default-disabled admission, env/container/docs updates.
 
 Gate: real provider/scanner proof, mutable-version attack, type/size/hash rejection,
-claim/send/rollback races, quota/cancel/late-upload/version-GC, scan outage and
+claim/send/rollback races, quota/cancel/late-upload/object-GC, scan outage and
 promotion/DB failure recovery all pass. Fakes supplement actual capability tests.
-Provider selection unresolved means this slice stays Proposed.
+R2 is selected. Scanner selection and real provider proofs are pending; full 08B is not Done.
 
 ## 5. 08C — Mentions and private inbox
 
@@ -179,4 +199,22 @@ shutdown. Phase 9 adds broker and distributed load/failure gates.
 - [ ] HTTP/WS docs/config/retention/runbooks synchronized.
 - [ ] Review findings fixed; scan/capacity/access-window limitations disclosed.
 
-All implementation and verification items remain pending in this docs task.
+08A is Done locally. 08B foundation is implemented; scanner/provider release gates and 08C remain pending.
+
+### 08B foundation verification — 2026-10-02
+
+- `go test -race -p 2 -count=1 ./...`: passed, including PostgreSQL 16 integration
+  tests using a disposable localhost database, never the personal Neon database.
+- `go vet -p 2 ./...`, `make build`, `go mod verify`, `git diff --check`: passed.
+- `make docs`: generated Swagger successfully (existing swag parser warnings).
+- Integration evidence: 8→9→8→9 upgrade/rollback preserves prior rooms;
+  idempotent reservation/complete/cancel; cross-owner/private authorization;
+  concurrent 100 MiB/10 reservation quota with int64 IDs; state/outbox rollback;
+  delayed cleanup; independent scan purpose; stale lease ACK/retry rejection;
+  bounded crash retries; parent cascade retains cleanup identity.
+- Unit evidence: R2 upload signed headers/deadline, signed DELETE/idempotent 404,
+  cancelled request cause, safe HTTP errors, closed admission, message attachment
+  rejection before persistence and cleanup worker cancellation.
+- `golangci-lint` and `govulncheck` are not installed; these checks were not run.
+- R2 staging credentials/browser CORS tests and scanner are unavailable; provider
+  immutability/grace/scan/promotion proofs remain pending. No commit/push/deployment.

@@ -111,6 +111,9 @@ func New(
 
 	// ── Register domain routes ────────────────────────────────────────────────
 	userHandler.RegisterRoutes(public, private)
+	if s.options.AttachmentHandler != nil {
+		s.options.AttachmentHandler.RegisterRoutes(private)
+	}
 	chatHandler.RegisterRoutes(private)
 	chatHandler.RegisterMembershipRoutes(private)
 	chatHandler.RegisterPresenceReadRoutes(private)

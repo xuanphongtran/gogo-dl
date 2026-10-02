@@ -26,7 +26,7 @@ services:
     stop_grace_period: 20s
     restart: unless-stopped
     env_file:
-      # Includes telemetry settings; metrics has no published host port.
+      # Includes telemetry and optional R2 settings; metrics has no published host port.
       - configs/.env
     environment:
       # Override DB_HOST so the app reaches the postgres *service*, not localhost.

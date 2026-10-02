@@ -105,6 +105,8 @@ type ListInvitationsQuery struct {
 
 // SendMessageRequest is the body for POST /rooms/:id/messages.
 type SendMessageRequest struct {
+	// AttachmentIDs are reserved for scanner-backed attachment binding.
+	AttachmentIDs []int64 `json:"attachment_ids,omitempty"`
 	// Content must be nonblank and at most 4000 UTF-8 bytes after trimming whitespace.
 	Content string `json:"content" binding:"required,min=1,max=4000"`
 }

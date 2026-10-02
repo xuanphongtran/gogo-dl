@@ -7,14 +7,16 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/xuanphongtran/gogo-dl/internal/attachment"
 	"github.com/xuanphongtran/gogo-dl/internal/telemetry"
 )
 
 // Options provides existing runtime dependencies for probes and telemetry.
 type Options struct {
-	Metrics       *telemetry.Metrics
-	CheckDatabase func(context.Context) error
-	RealtimeReady func() bool
+	AttachmentHandler *attachment.Handler
+	Metrics           *telemetry.Metrics
+	CheckDatabase     func(context.Context) error
+	RealtimeReady     func() bool
 }
 
 // Lifecycle marks drain immediately, before waiting for in-flight requests.
