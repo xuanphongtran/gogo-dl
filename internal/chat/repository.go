@@ -40,6 +40,10 @@ type Repository interface {
 	// Message operations
 	CreateMessage(ctx context.Context, msg *Message) error
 	ListMessages(ctx context.Context, roomID int64, limit int, beforeID int64) ([]*Message, error)
+
+	// Read-state operations authorize against locked room and membership rows.
+	GetReadState(ctx context.Context, roomID, userID int64, authorize ReadStatePolicy) (*ReadState, error)
+	AdvanceReadState(ctx context.Context, roomID, userID, messageID int64, authorize ReadStatePolicy) (*ReadState, bool, error)
 }
 
 type postgresRepository struct {

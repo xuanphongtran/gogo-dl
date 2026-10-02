@@ -19,10 +19,17 @@ type RoomAuthorizer interface {
 }
 
 type authorizationResult struct {
-	clientID string
-	userID   int64
-	roomID   string
-	err      error
+	client     *Client
+	roomID     string
+	command    EventType
+	generation uint64
+	err        error
+}
+
+type pendingAuthorization struct {
+	roomID     string
+	generation uint64
+	cancel     context.CancelFunc
 }
 
 type revocationRequest struct {
@@ -41,43 +48,71 @@ func (h *Hub) requestJoin(client *Client, roomID string) {
 	if client == nil {
 		return
 	}
-	if h.authorizer == nil {
-		h.sendProtocolError(client, roomID, "authorization_unavailable", "room authorization is unavailable")
-		return
-	}
-
 	roomNumber, canonicalRoomID, err := parseRoomID(roomID)
 	if err != nil {
 		h.sendProtocolError(client, roomID, "invalid_room_id", "invalid room id")
 		return
 	}
+	h.requestAuthorization(client, roomNumber, canonicalRoomID, EventJoin)
+}
+
+func (h *Hub) requestAuthorization(client *Client, roomNumber int64, roomID string, command EventType) {
+	if h.authorizer == nil {
+		h.sendProtocolError(client, roomID, "authorization_unavailable", "room authorization is unavailable")
+		return
+	}
+	if client.authorization != nil {
+		h.sendProtocolError(client, roomID, "authorization_pending", "a room command is awaiting authorization")
+		return
+	}
+
+	client.authorizationGeneration++
+	generation := client.authorizationGeneration
+	ctx, cancel := context.WithTimeout(client.Context(), roomAuthorizationTimeout)
+	client.authorization = &pendingAuthorization{roomID: roomID, generation: generation, cancel: cancel}
 
 	go func() {
-		ctx, cancel := context.WithTimeout(client.Context(), roomAuthorizationTimeout)
 		defer cancel()
 
 		err := h.authorizer.AuthorizeRoom(ctx, client.UserID, roomNumber)
+		if err == nil {
+			err = ctx.Err()
+		}
 		result := authorizationResult{
-			clientID: client.ID,
-			userID:   client.UserID,
-			roomID:   canonicalRoomID,
-			err:      err,
+			client:     client,
+			roomID:     roomID,
+			command:    command,
+			generation: generation,
+			err:        err,
 		}
 		select {
 		case h.authorized <- result:
 		case <-h.done:
-		case <-client.Context().Done():
 		}
 	}()
 }
 
+// Invalidated work keeps its slot until completion, bounding concurrent workers
+// even when a client repeatedly alternates join and leave.
+func (h *Hub) invalidateAuthorization(client *Client, roomID string) {
+	if pending := client.authorization; pending != nil && pending.roomID == roomID {
+		client.authorizationGeneration++
+		pending.cancel()
+	}
+}
+
 func (h *Hub) handleAuthorization(result authorizationResult) {
-	client, ok := h.clients[result.clientID]
-	if !ok || client.UserID != result.userID {
+	client, ok := h.clients[result.client.ID]
+	if !ok || client != result.client || client.authorization == nil || client.authorization.generation != result.generation {
+		return
+	}
+	client.authorization = nil
+	if client.authorizationGeneration != result.generation || client.Context().Err() != nil {
 		return
 	}
 	if result.err != nil {
 		if isAccessDenied(result.err) {
+			h.revokeSubscriptions(result.roomID, client.UserID, false)
 			h.sendProtocolError(client, result.roomID, "forbidden", "you are not allowed to access this room")
 			return
 		}
@@ -85,9 +120,17 @@ func (h *Hub) handleAuthorization(result authorizationResult) {
 		return
 	}
 
-	if _, joined := client.rooms[result.roomID]; joined {
+	if result.command != EventJoin {
+		if _, joined := client.rooms[result.roomID]; joined {
+			h.applyTyping(client, result.roomID, result.command, time.Now())
+		}
 		return
 	}
+	if _, joined := client.rooms[result.roomID]; joined {
+		h.sendPresenceSnapshot(client, result.roomID)
+		return
+	}
+	wasOnline := h.userOnline(result.roomID, client.UserID)
 	h.addToRoom(result.roomID, client)
 	client.rooms[result.roomID] = struct{}{}
 	h.fanOut(result.roomID, Message{
@@ -98,6 +141,10 @@ func (h *Hub) handleAuthorization(result authorizationResult) {
 			"client_id": client.ID,
 		},
 	}, "")
+	if !wasOnline {
+		h.publishPresence(result.roomID, client.UserID, true)
+	}
+	h.sendPresenceSnapshot(client, result.roomID)
 }
 
 func (h *Hub) sendProtocolError(client *Client, roomID, code, message string) {
@@ -174,29 +221,23 @@ func (h *Hub) RevokeUserFromRoom(ctx context.Context, roomID string, userID int6
 }
 
 func (h *Hub) handleRevocation(req revocationRequest) {
-	members, ok := h.rooms[req.roomID]
-	if !ok {
-		req.done <- nil
-		return
-	}
+	h.revokeSubscriptions(req.roomID, req.userID, true)
+	req.done <- nil
+}
 
-	for clientID, client := range members {
-		if client.UserID != req.userID {
+func (h *Hub) revokeSubscriptions(roomID string, userID int64, notify bool) {
+	// Pending joins are not in rooms yet, so scan every active connection.
+	for _, client := range h.clients {
+		if client.UserID != userID {
 			continue
 		}
-		client.sendJSON(Message{
-			Type:   EventError,
-			RoomID: req.roomID,
-			Payload: map[string]string{
-				"code":    "membership_revoked",
-				"message": "your room membership was revoked",
-			},
-		})
-		delete(members, clientID)
-		delete(client.rooms, req.roomID)
+		h.invalidateAuthorization(client, roomID)
+		if _, joined := client.rooms[roomID]; !joined {
+			continue
+		}
+		if notify {
+			h.sendProtocolError(client, roomID, "membership_revoked", "your room membership was revoked")
+		}
+		h.leaveRoom(roomID, client)
 	}
-	if len(members) == 0 {
-		delete(h.rooms, req.roomID)
-	}
-	req.done <- nil
 }

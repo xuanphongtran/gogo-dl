@@ -64,6 +64,19 @@ func sendCommand(hub *Hub, client *Client, msg Message) {
 	hub.inbound <- inboundMessage{ClientID: client.ID, UserID: client.UserID, Message: msg}
 }
 
+func readJoinSnapshot(t *testing.T, client *Client) {
+	t.Helper()
+	for {
+		got := readClientMessage(t, client)
+		if got.Type == EventPresenceSnapshot {
+			return
+		}
+		if got.Type != EventPresence {
+			t.Fatalf("join initialization event = %+v, want presence or snapshot", got)
+		}
+	}
+}
+
 func TestHubAuthorizesRoomJoinBeforeSubscription(t *testing.T) {
 	hub, client := startTestHub(t, fakeRoomAuthorizer{})
 
@@ -72,6 +85,7 @@ func TestHubAuthorizesRoomJoinBeforeSubscription(t *testing.T) {
 	if got.Type != EventJoin || got.RoomID != "1" {
 		t.Fatalf("join event = %+v, want canonical authorized join", got)
 	}
+	readJoinSnapshot(t, client)
 }
 
 func TestHubRejectsUnauthorizedRoomJoin(t *testing.T) {
@@ -113,6 +127,7 @@ func TestHubRevokesActiveSubscription(t *testing.T) {
 	hub, client := startTestHub(t, fakeRoomAuthorizer{})
 	sendCommand(hub, client, Message{Type: EventJoin, RoomID: "1"})
 	_ = readClientMessage(t, client)
+	readJoinSnapshot(t, client)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
