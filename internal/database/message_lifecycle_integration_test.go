@@ -137,12 +137,13 @@ func TestPhase06MigrationUpgrade(t *testing.T) {
 			t.Fatalf("lifecycle constraint error=%v", err)
 		}
 	}
-	// Roll back only the new migration in this disposable DB, then reapply it.
+	// Target schema 5 explicitly so this still exercises migration 6 down when
+	// newer migrations exist, then reapply the full chain in this disposable DB.
 	m, err := migrate.New("file://../../migrations", os.Getenv("TEST_DATABASE_URL"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	stepErr := m.Steps(-1)
+	stepErr := m.Migrate(5)
 	sourceErr, databaseErr := m.Close()
 	if stepErr != nil || sourceErr != nil || databaseErr != nil {
 		t.Fatalf("down migration: %v %v %v", stepErr, sourceErr, databaseErr)

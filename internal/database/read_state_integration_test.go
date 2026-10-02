@@ -172,7 +172,7 @@ func TestPhase7ReadStateSchemaUpgrade(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create rollback migrator: %v", err)
 	}
-	runErr := m.Steps(-1)
+	runErr := m.Migrate(6)
 	sourceErr, databaseErr := m.Close()
 	if runErr != nil || sourceErr != nil || databaseErr != nil {
 		t.Fatalf("roll back migration 7: migrate=%v source=%v database=%v", runErr, sourceErr, databaseErr)

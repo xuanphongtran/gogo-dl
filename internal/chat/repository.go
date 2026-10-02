@@ -41,6 +41,8 @@ type Repository interface {
 	// Message operations
 	CreateMessage(ctx context.Context, msg *Message) error
 	ListMessages(ctx context.Context, roomID int64, limit int, beforeID int64) ([]*Message, error)
+	// SearchMessages reads matches while holding room and membership locks.
+	SearchMessages(ctx context.Context, roomID, userID int64, query string, limit int, beforeID int64, authorize ReadStatePolicy) ([]*Message, error)
 	EditMessage(ctx context.Context, roomID, actorID, messageID int64, content string, policy MessageMutationPolicy) (*Message, bool, error)
 	DeleteMessage(ctx context.Context, roomID, actorID, messageID int64, policy MessageMutationPolicy) (*Message, bool, error)
 

@@ -2,7 +2,7 @@
 
 **Priority:** P2
 
-**Status:** Proposed — SPEC drafted; integration and provider gates pending
+**Status:** In progress — 08A implemented and verified locally; 08B–08C proposed
 
 **Execution plan:** [Phase 8 plan](../plan/08-rich-messaging.md)
 
@@ -13,7 +13,8 @@
 Members can find messages in their rooms, attach verified private files and receive
 durable mention notifications while offline. PostgreSQL remains authoritative;
 object storage holds file bytes. Existing text sends and ID-based history remain
-compatible. This document specifies future behavior; drafting it implements no API.
+compatible. Section 3 (08A) is implemented with local verification recorded in
+the execution plan; attachment and notification sections specify future behavior.
 
 Deliver three slices: **08A search**, **08B attachments**, **08C mentions/inbox**.
 Phase 6 application code is now integrated from `develop`, including its

@@ -25,7 +25,8 @@ Phase 07 was implemented and verified from main; Phase 06 application code
 is now included from develop. Its schema includes migration 000006 before 000007 to preserve
 deployment order; testing and review/fix results are recorded in its plan.
 
-Phase 08 remains a proposed design. Phase 09 is in progress: slice 09A is
+Phase 08 is in progress: 08A room search is implemented and verified locally;
+08B attachments and 08C mentions/inbox remain proposed. Phase 09 is in progress: slice 09A is
 Done on `ft/phase-9a` after implementation and local verification. The remaining 09B–09D target
 contracts, provider access and capacity gates describe future behavior and must
 be verified before release.

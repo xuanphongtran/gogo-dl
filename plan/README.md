@@ -23,7 +23,7 @@ Within the same priority, lower sequence numbers should normally be completed fi
 | 05 | P1 | [Room membership and roles](./05-room-membership-roles.md) | Private rooms, invitations, ownership, and moderation roles | 02–04 | Pending |
 | 06 | P1 | [Message lifecycle](./06-message-lifecycle.md) | Edit, delete, and consistent real-time message events | 03–05 | Done |
 | 07 | P1 | [Presence, typing, and read state](./07-presence-read-state.md) | Online state, typing indicators, and unread/read tracking | 03, 05 | Done |
-| 08 | P2 | [Search, attachments, and notifications](./08-rich-messaging.md) | Discoverable messages and richer asynchronous engagement | 05–07 | Proposed |
+| 08 | P2 | [Search, attachments, and notifications](./08-rich-messaging.md) | Discoverable messages and richer asynchronous engagement | 05–07 | In progress |
 | 09 | P2 | [Scale and observability](./09-scale-observability.md) | Multi-instance delivery, metrics, tracing, and SLOs | 01–08 | In progress |
 
 ## Verification record
@@ -41,7 +41,10 @@ review/fixes are complete. Phase 06 application code is now included from develo
 with both lifecycle and read-state repository contracts retained. The exact
 Phase 06 schema migration remains before version 7 during deployment.
 
-Phase 08 remains `Proposed` with detailed SPEC and PLAN. Phase 09 is `In progress`:
+Phase 08 is `In progress`: 08A search is implemented and verified locally on
+`ft/phase-8a`, including PostgreSQL migration/index and authorization tests.
+08B–08C remain proposed; provider and staging release gates remain pending.
+Phase 09 is `In progress`:
 09A is `Done` on `ft/phase-9a`; staging/provider and
 09B–09D distributed delivery, shared state and rollout gates remain pending.
 See its plan for exact checks and the local baseline.
