@@ -31,15 +31,16 @@ Within the same priority, lower sequence numbers should normally be completed fi
 Stages 01–04 are complete and tracked as `Done`. Phase 05 is Pending at the
 user's request. Phase 06 is Done using its existing membership/role contract,
 with authorization locked during new message mutations and isolated PostgreSQL
-and race verification complete. Phase 05 follow-up
-fixes and dedicated PostgreSQL verification remain separate work.
+and race verification complete. Phase 05 review fixes for public leave retries and atomic member-removal
+authorization are included from develop; dedicated PostgreSQL verification
+remains separate work.
 
 ## Status values
 
 - `Proposed`: scoped but not started.
 - `Ready`: dependencies and open decisions are resolved.
 - `In progress`: implementation is active.
-- `Pending`: work is deferred at the user's request.
+- `Pending`: work is deferred at the user's request; unresolved work is recorded in the plan.
 - `Blocked`: a named external decision or dependency prevents progress.
 - `Done`: acceptance criteria are verified and documentation is current.
 

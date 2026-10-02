@@ -110,7 +110,7 @@ path IDs are untrusted input and are checked by the service.
 | Join a private room | 401 | forbidden | forbidden; use invitation | forbidden; use invitation | forbidden; use invitation |
 | Invite a user | 401 | forbidden | forbidden | allowed | allowed |
 | Accept/decline own invitation | 401 | allowed for own invite | allowed | allowed | allowed |
-| Leave the room | 401 | forbidden | allowed | allowed | transfer first |
+| Leave the room | 401 | idempotent (204) | allowed | allowed | transfer first |
 | Remove a regular member | 401 | forbidden | forbidden | allowed | allowed |
 | Promote/demote moderator | 401 | forbidden | forbidden | forbidden | allowed |
 | Transfer ownership | 401 | forbidden | forbidden | forbidden | allowed |
@@ -315,6 +315,12 @@ corresponding WebSocket event or asks the Hub to revoke a subscription.
 The service, not the repository, owns authorization. Repository methods may
 enforce database invariants but must not decide whether a moderator may remove
 another user.
+
+For member removal, the repository locks the room first, then the actor and
+target membership rows in user-ID order. It calls the service's authorization
+policy on those locked rows before deleting, and holds the locks until commit.
+Concurrent demotion, promotion, removal, or ownership transfer cannot change
+the roles between that policy check and the deletion.
 
 ## WebSocket contract
 

@@ -2,9 +2,11 @@ package chat
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/xuanphongtran/gogo-dl/internal/ws"
@@ -39,8 +41,8 @@ func TestServiceOwnerCannotLeaveRoom(t *testing.T) {
 
 func TestServiceModeratorCannotRemoveModerator(t *testing.T) {
 	repo, mock := newRepositoryTest(t)
-	expectMember(mock, 10, 7, RoomRoleModerator)
-	expectMember(mock, 10, 8, RoomRoleModerator)
+	expectRemovalMembers(mock, 10, 7, 8, RoomRoleModerator, RoomRoleModerator, nil)
+	mock.ExpectRollback()
 	svc := NewService(repo, ws.New())
 
 	if err := svc.RemoveMemberAs(context.Background(), 7, 10, 8); !errors.Is(err, apperror.ErrForbidden) {
@@ -110,11 +112,116 @@ func TestServiceMembershipActionsPropagateActorLookupFailure(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			repo, mock := newRepositoryTest(t)
-			expectMemberError(mock, 10, 7, dependencyErr)
+			if tt.name == "remove member" {
+				expectRemovalMembers(mock, 10, 7, 8, "", "", dependencyErr)
+				mock.ExpectRollback()
+			} else {
+				expectMemberError(mock, 10, 7, dependencyErr)
+			}
 
 			err := tt.call(NewService(repo, ws.New()))
 			if !errors.Is(err, dependencyErr) {
 				t.Fatalf("error = %v, want membership lookup failure", err)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatalf("repository expectations: %v", err)
+			}
+		})
+	}
+}
+
+func TestServiceRemoveMemberAuthorization(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		actorRole  RoomRole
+		targetRole RoomRole
+		wantErr    error
+	}{
+		{name: "owner removes member", actorRole: RoomRoleOwner, targetRole: RoomRoleMember},
+		{name: "owner removes moderator", actorRole: RoomRoleOwner, targetRole: RoomRoleModerator},
+		{name: "moderator removes member", actorRole: RoomRoleModerator, targetRole: RoomRoleMember},
+		{name: "actor was demoted", actorRole: RoomRoleMember, targetRole: RoomRoleMember, wantErr: apperror.ErrForbidden},
+		{name: "actor was removed", targetRole: RoomRoleMember, wantErr: apperror.ErrForbidden},
+		{name: "target became owner", actorRole: RoomRoleOwner, targetRole: RoomRoleOwner, wantErr: apperror.ErrForbidden},
+		{name: "target was removed", actorRole: RoomRoleOwner, wantErr: apperror.ErrNotFound},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			repo, mock := newRepositoryTest(t)
+			expectRemovalMembers(mock, 10, 7, 8, tt.actorRole, tt.targetRole, nil)
+			if tt.wantErr != nil {
+				mock.ExpectRollback()
+			} else {
+				mock.ExpectExec(regexp.QuoteMeta(`DELETE FROM room_members WHERE room_id = $1 AND user_id = $2 AND role <> 'owner'`)).
+					WithArgs(int64(10), int64(8)).WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectCommit()
+			}
+			hub := ws.New()
+			stopped := make(chan struct{})
+			go func() {
+				defer close(stopped)
+				hub.Run()
+			}()
+			t.Cleanup(func() {
+				hub.Shutdown()
+				select {
+				case <-stopped:
+				case <-time.After(time.Second):
+					t.Error("hub did not stop")
+				}
+			})
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			err := NewService(repo, hub).RemoveMemberAs(ctx, 7, 10, 8)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("RemoveMemberAs() error = %v, want %v", err, tt.wantErr)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatalf("repository expectations: %v", err)
+			}
+		})
+	}
+}
+
+func TestServiceRemoveMemberPropagatesDeleteFailure(t *testing.T) {
+	repo, mock := newRepositoryTest(t)
+	dependencyErr := errors.New("delete failed")
+	expectRemovalMembers(mock, 10, 7, 8, RoomRoleOwner, RoomRoleMember, nil)
+	mock.ExpectExec(regexp.QuoteMeta(`DELETE FROM room_members WHERE room_id = $1 AND user_id = $2 AND role <> 'owner'`)).
+		WithArgs(int64(10), int64(8)).WillReturnError(dependencyErr)
+	mock.ExpectRollback()
+
+	err := NewService(repo, ws.New()).RemoveMemberAs(context.Background(), 7, 10, 8)
+	if !errors.Is(err, dependencyErr) {
+		t.Fatalf("RemoveMemberAs() error = %v, want delete failure", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("repository expectations: %v", err)
+	}
+}
+
+func TestServiceLeaveAfterDeleteMiss(t *testing.T) {
+	dependencyErr := errors.New("membership lookup failed")
+	for _, tt := range []struct {
+		name      string
+		lookupErr error
+		wantErr   error
+	}{
+		{name: "concurrent public leave is idempotent", lookupErr: sql.ErrNoRows},
+		{name: "dependency failure is preserved", lookupErr: dependencyErr, wantErr: dependencyErr},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			repo, mock := newRepositoryTest(t)
+			expectMember(mock, 10, 7, RoomRoleMember)
+			mock.ExpectExec(regexp.QuoteMeta(`DELETE FROM room_members WHERE room_id = $1 AND user_id = $2 AND role <> 'owner'`)).
+				WithArgs(int64(10), int64(7)).WillReturnResult(sqlmock.NewResult(0, 0))
+			expectMemberError(mock, 10, 7, tt.lookupErr)
+			if tt.wantErr == nil {
+				expectRoomByID(mock, &Room{ID: 10, Visibility: RoomVisibilityPublic})
+			}
+
+			err := NewService(repo, ws.New()).LeaveRoom(context.Background(), 7, 10)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("LeaveRoom() error = %v, want %v", err, tt.wantErr)
 			}
 			if err := mock.ExpectationsWereMet(); err != nil {
 				t.Fatalf("repository expectations: %v", err)
