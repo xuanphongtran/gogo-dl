@@ -153,11 +153,33 @@ returns `404`. Owners must transfer ownership before leaving (`409`).
 
 ### WebSocket
 
+The machine-readable WebSocket contract is [docs/asyncapi.yaml](docs/asyncapi.yaml)
+(AsyncAPI 3.0). It lists the handshake authentication options, client commands,
+server events, payload schemas, and examples. Swagger covers the REST API;
+AsyncAPI covers WebSocket messages. To validate or render the document locally
+with the [AsyncAPI CLI](https://www.asyncapi.com/docs/tools/cli/usage) (requires
+Node.js 22 via nvm):
+
+```bash
+nvm use 22
+npx --yes @asyncapi/cli@4.1.1 validate docs/asyncapi.yaml
+PUPPETEER_SKIP_DOWNLOAD=1 npx --yes @asyncapi/cli@4.1.1 generate fromTemplate docs/asyncapi.yaml @asyncapi/html-template@2.3.14 --install --no-interactive -o /tmp/gogo-dl-asyncapi
+```
+
+The generated HTML is a local documentation artifact; the Go server does not
+serve it. Update `docs/asyncapi.yaml` whenever the WebSocket contract changes.
+
 ```
 GET /api/v1/ws?token=<access_token>
 ```
 
-Once connected, send/receive JSON envelopes:
+Clients may send only `join` and `leave` commands. `join` requires current room
+membership; use the REST room endpoints to join a public room or accept a private
+room invitation first. A `leave` command ends only the WebSocket subscription.
+To send a durable chat message, call `POST /api/v1/rooms/:id/messages` and then
+receive its WebSocket broadcast. The server can send several newline-separated
+JSON events in one WebSocket text frame; parse each nonempty line separately.
+Send one JSON command per client frame. For example:
 
 ```jsonc
 // Join a room
