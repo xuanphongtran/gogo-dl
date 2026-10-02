@@ -17,6 +17,8 @@ const (
 	Scan = "attachment_scan"
 	// Cleanup identifies the independent object cleanup delivery purpose.
 	Cleanup = "attachment_cleanup"
+	// Notification owns mention materialization independently of cleanup and relay.
+	Notification = "notification"
 )
 
 // Intent contains server-owned references, never message contents or signed URLs.
@@ -70,6 +72,10 @@ type Job struct {
 	Token        string `db:"lease_token"`
 	AttachmentID int64  `db:"attachment_id"`
 	ObjectKey    string `db:"object_key"`
+	RoomID       int64  `db:"room_id"`
+	UserID       int64  `db:"user_id"`
+	MessageID    int64  `db:"message_id"`
+	Generation   int64  `db:"membership_generation"`
 }
 
 // Store owns delivery claims and acknowledgements, not immutable event updates.
@@ -80,7 +86,7 @@ func NewStore(db *sqlx.DB) *Store { return &Store{db: db} }
 
 // Claim commits a short claim before any provider I/O. An empty queue returns nil.
 func (s *Store) Claim(ctx context.Context, purpose string) (*Job, error) {
-	if purpose != Scan && purpose != Cleanup && purpose != "broker" {
+	if purpose != Scan && purpose != Cleanup && purpose != "broker" && purpose != Notification {
 		return nil, fmt.Errorf("outbox invalid purpose")
 	}
 	if _, err := s.db.ExecContext(ctx, `WITH exhausted AS (
@@ -96,6 +102,11 @@ func (s *Store) Claim(ctx context.Context, purpose string) (*Job, error) {
 		return nil, fmt.Errorf("outbox lease ID: %w", err)
 	}
 	var job Job
+	projection := `c.event_id,c.lease_token,o.attachment_id,COALESCE(k.object_key,'') AS object_key`
+	if purpose == Notification {
+		projection = `c.event_id,c.lease_token,COALESCE(o.attachment_id,0) AS attachment_id,COALESCE(k.object_key,'') AS object_key,
+        o.room_id,o.user_id,o.message_id,o.membership_generation`
+	}
 	err = s.db.GetContext(ctx, &job, `WITH candidate AS (
         SELECT event_id,purpose FROM domain_outbox_deliveries
         WHERE purpose=$1 AND attempts<8 AND available_at<=clock_timestamp()
@@ -106,7 +117,7 @@ func (s *Store) Claim(ctx context.Context, purpose string) (*Job, error) {
         UPDATE domain_outbox_deliveries d SET state='leased',lease_token=$2,lease_until=clock_timestamp()+interval '30 seconds',attempts=attempts+1
         FROM candidate c WHERE d.event_id=c.event_id AND d.purpose=c.purpose
         RETURNING d.event_id,d.lease_token
-    ) SELECT c.event_id,c.lease_token,o.attachment_id,COALESCE(k.object_key,'') AS object_key
+    ) SELECT `+projection+`
       FROM claimed c JOIN domain_outbox o ON o.event_id=c.event_id
       LEFT JOIN attachment_cleanup_objects k ON k.event_id=c.event_id`, purpose, token.String())
 	if errors.Is(err, sql.ErrNoRows) {

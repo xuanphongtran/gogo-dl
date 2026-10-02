@@ -511,3 +511,15 @@ retain their keys and quota. No automatic retention policy removes these records
 Real R2 conditional PUT, concurrent writes, signed size/type headers, browser CORS,
 late writes and exact-byte scanner/promotion tests are required before opening
 admission. See [spec](spec/08-rich-messaging.md) and [plan](plan/08-rich-messaging.md).
+
+## Phase 08C: mentions and private inbox
+
+Messages accept an optional `mention_user_ids` array. Mention sends require an
+`Idempotency-Key` header; normalized requests are retained for 24 hours and
+retries return the original authorized message. Mention recipients are tied to
+their current membership generation, so leaving and rejoining does not restore
+old notifications. The private feed and preferences are available at
+`/api/v1/users/me/notifications`, `/api/v1/users/me/notification-preferences`,
+and `/api/v1/rooms/:id/notification-preferences`. Inbox rows contain only room
+and message references. A worker emits a best-effort user-only WebSocket
+`notification` event after durable insertion; REST remains the recovery path.

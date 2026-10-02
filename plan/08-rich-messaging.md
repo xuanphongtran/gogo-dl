@@ -2,7 +2,7 @@
 
 **Priority:** P2
 
-**Status:** In progress — 08A Done locally; 08B R2 foundation implemented; scanner, 08C and staging/provider gates pending
+**Status:** In progress — 08A Done locally; 08B R2 foundation implemented; 08C implemented locally; scanner/provider and release verification gates pending
 
 **Specification:** [Phase 8 SPEC](../spec/08-rich-messaging.md)
 
@@ -20,7 +20,7 @@ Defaults: PostgreSQL `simple` search, private Cloudflare R2 with create-only key
 fail-closed scan, durable in-app mention feed. Provider/cost/scanner capability,
 retention and measured quotas are readiness decisions. External email/push,
 file-content/global search and attachment-only sends are outside scope. This plan
-provisions nothing. 08A is implemented and locally verified; 08B foundation is implemented; full attachments and 08C remain pending.
+provisions nothing. 08A is implemented and locally verified; 08B foundation is implemented; full attachments remain pending and 08C is implemented locally.
 
 ## 2. Inspect and establish contracts
 
@@ -136,21 +136,21 @@ Expected files: additive chat DTO/validation; notification repository/service/
 handlers/worker; preferences; routes/config/startup; shared outbox purpose; new
 migration pairs; private WS event/tests and API docs.
 
-- [ ] Backfill immutable `room_members.membership_generation` per insertion;
+- [x] Backfill immutable `room_members.membership_generation` per insertion;
       preserve role changes, reset rejoin, generation-scoped keys/cascades.
-- [ ] Snapshot bounded typed recipients/generations in send transaction; no username
+- [x] Snapshot bounded typed recipients/generations in send transaction; no username
       parsing, no self notification, generic invalid-recipient errors.
-- [ ] Text edits preserve original mentions; deletion/removal clears bindings.
-- [ ] Add global/room preferences, owned cursor inbox/read endpoints, false booleans
+- [x] Text edits preserve original mentions; deletion/removal clears bindings.
+- [x] Add global/room preferences, owned cursor inbox/read endpoints, false booleans
       and current generation/room authorization filtering.
-- [ ] Materialize default preference rows before locking; worker and preference
+- [x] Materialize default preference rows before locking; worker and preference
       writes lock consistently. Uniquely insert effect and private intent together;
       never resurrect old generation feed.
-- [ ] Independent cleanup/notification/future relay progress; prove crash/retry
+- [x] Independent cleanup/notification/future relay progress; prove crash/retry
       cannot double-create rows or consume another purpose's work.
-- [ ] Best-effort user-only WS after commit, REST recovery, no copied deleted text;
+- [x] Best-effort user-only WS after commit, REST recovery, no copied deleted text;
       leave removes old feed, room read cursor behavior remains unchanged.
-- [ ] Minimal real delivery interface/in-app adapter/test fake; external channels
+- [x] Minimal real delivery interface/in-app adapter/test fake; external channels
       need provider decisions and are not implemented speculatively.
 - [ ] Update README/Swagger; the AsyncAPI assets now integrated from `develop`;
       document required content, optional send arrays and retry-key retention.
@@ -199,7 +199,7 @@ shutdown. Phase 9 adds broker and distributed load/failure gates.
 - [ ] HTTP/WS docs/config/retention/runbooks synchronized.
 - [ ] Review findings fixed; scan/capacity/access-window limitations disclosed.
 
-08A is Done locally. 08B foundation is implemented; scanner/provider release gates and 08C remain pending.
+08A is Done locally. 08B foundation is implemented; scanner/provider release gates remain pending. 08C mention capture, generation-scoped preferences, private inbox, retry keys, notification outbox delivery, REST recovery and user-only WebSocket delivery are implemented locally; dedicated race/DB verification remains pending.
 
 ### 08B foundation verification — 2026-10-02
 

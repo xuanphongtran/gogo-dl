@@ -14,6 +14,8 @@ coverage.txt
 
 # ── Go build cache ────────────────────────────────────────────────────────────
 /vendor/
+.gocache/
+.gomodcache/
 
 # ── Env / secrets — NEVER commit these ───────────────────────────────────────
 configs/.env

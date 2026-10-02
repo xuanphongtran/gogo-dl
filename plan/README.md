@@ -43,7 +43,7 @@ Phase 06 schema migration remains before version 7 during deployment.
 
 Phase 08 is `In progress`: 08A search is implemented and verified locally on
 `ft/phase-8a`, including PostgreSQL migration/index and authorization tests.
-08B–08C remain proposed; provider and staging release gates remain pending.
+08B foundation is implemented and 08C mentions/inbox is implemented locally; scanner/provider and dedicated DB/race release gates remain pending.
 Phase 09 is `In progress`:
 09A is `Done` on `ft/phase-9a`; staging/provider and
 09B–09D distributed delivery, shared state and rollout gates remain pending.

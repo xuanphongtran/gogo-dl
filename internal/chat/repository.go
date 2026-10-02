@@ -52,12 +52,18 @@ type Repository interface {
 }
 
 type postgresRepository struct {
-	db *sqlx.DB
+	db       *sqlx.DB
+	mentions bool
 }
 
 // NewRepository creates a new PostgreSQL-backed chat Repository.
 func NewRepository(db *sqlx.DB) Repository {
 	return &explicitRepository{Repository: &postgresRepository{db: db}, db: db}
+}
+
+// NewMentionRepository enables migration-10 atomic sends and mention projections.
+func NewMentionRepository(db *sqlx.DB) Repository {
+	return &explicitRepository{Repository: &postgresRepository{db: db, mentions: true}, db: db, mentions: true}
 }
 
 // ── Room ──────────────────────────────────────────────────────────────────────

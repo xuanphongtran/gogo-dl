@@ -258,6 +258,7 @@ func (h *Handler) SendMessage(c *gin.Context) {
 		return
 	}
 
+	req.IdempotencyKey = c.GetHeader("Idempotency-Key")
 	msg, err := h.svc.SendMessage(c.Request.Context(), userID, roomID, &req, "")
 	if err != nil {
 		apperror.Respond(c, err)

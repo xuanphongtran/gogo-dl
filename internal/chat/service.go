@@ -105,6 +105,27 @@ func (s *Service) SendMessage(ctx context.Context, userID int64, roomID int64, r
 		return nil, apperror.ErrInvalidRequest
 	}
 
+	if rich, ok := s.repo.(mentionSender); ok && (rich.AtomicSends() || len(req.MentionUserIDs) > 0 || req.IdempotencyKey != "") {
+		normalized, hash, err := normalizeMentionSend(roomID, content, req)
+		if err != nil {
+			return nil, err
+		}
+		msg, created, err := rich.SendMessageAtomic(ctx, userID, roomID, normalized, hash, requireReadStateMember)
+		if err != nil {
+			return nil, err
+		}
+		if created && s.hub != nil {
+			room := strconv.FormatInt(roomID, 10)
+			if err := s.hub.Broadcast(room, ws.Message{Type: ws.EventMessage, RoomID: room, Payload: msg}); err != nil {
+				log.Warn().Msg("chat: realtime broadcast dropped")
+			}
+		}
+		return msg, nil
+	}
+	if len(req.MentionUserIDs) > 0 || req.IdempotencyKey != "" {
+		return nil, apperror.ErrInvalidRequest
+	}
+
 	// Check room exists.
 	if _, err := s.repo.GetRoomByID(ctx, roomID); err != nil {
 		return nil, err
