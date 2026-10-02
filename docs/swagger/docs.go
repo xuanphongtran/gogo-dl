@@ -461,6 +461,302 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/rooms/{id}/attachments/uploads": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "attachments"
+                ],
+                "summary": "Reserve attachment upload (unavailable while scanner is pending)",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Room ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "16-128 printable ASCII bytes",
+                        "name": "Idempotency-Key",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Unverified metadata",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_attachment.UploadRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/internal_attachment.UploadTicket"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/rooms/{id}/attachments/{attachment_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "attachments"
+                ],
+                "summary": "Get declared attachment metadata owned by the current room member",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Room ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Attachment ID",
+                        "name": "attachment_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_attachment.Metadata"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "attachments"
+                ],
+                "summary": "Cancel an owned upload and schedule delayed cleanup",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Room ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Attachment ID",
+                        "name": "attachment_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/rooms/{id}/attachments/{attachment_id}/complete": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "attachments"
+                ],
+                "summary": "Queue scan request; does not verify or publish attachment",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Room ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Attachment ID",
+                        "name": "attachment_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/internal_attachment.Metadata"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/rooms/{id}/invitations": {
             "post": {
                 "security": [
@@ -1015,6 +1311,12 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "503": {
+                        "description": "Attachment scanner pending",
                         "schema": {
                             "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
                         }
@@ -1891,6 +2193,87 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_attachment.Metadata": {
+            "type": "object",
+            "properties": {
+                "content_type": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "filename": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "sha256": {
+                    "type": "string"
+                },
+                "size_bytes": {
+                    "type": "integer"
+                },
+                "state": {
+                    "type": "string"
+                },
+                "upload_expires_at": {
+                    "type": "string"
+                },
+                "verified": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "internal_attachment.UploadRequest": {
+            "type": "object",
+            "required": [
+                "content_type",
+                "filename",
+                "sha256",
+                "size_bytes"
+            ],
+            "properties": {
+                "content_type": {
+                    "type": "string"
+                },
+                "filename": {
+                    "type": "string"
+                },
+                "sha256": {
+                    "type": "string"
+                },
+                "size_bytes": {
+                    "type": "integer",
+                    "maximum": 10485760,
+                    "minimum": 1
+                }
+            }
+        },
+        "internal_attachment.UploadTicket": {
+            "type": "object",
+            "properties": {
+                "attachment": {
+                    "$ref": "#/definitions/internal_attachment.Metadata"
+                },
+                "headers": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "method": {
+                    "type": "string"
+                },
+                "upload_url": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_chat.AdvanceReadStateRequest": {
             "type": "object",
             "required": [
@@ -2222,6 +2605,13 @@ const docTemplate = `{
                 "content"
             ],
             "properties": {
+                "attachment_ids": {
+                    "description": "AttachmentIDs are reserved for scanner-backed attachment binding.",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
                 "content": {
                     "description": "Content must be nonblank and at most 4000 UTF-8 bytes after trimming whitespace.",
                     "type": "string",

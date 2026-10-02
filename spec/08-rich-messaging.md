@@ -2,7 +2,7 @@
 
 **Priority:** P2
 
-**Status:** In progress — 08A implemented and verified locally; 08B–08C proposed
+**Status:** In progress — 08A implemented and verified locally; 08B R2 foundation implemented, scanner/provider gates pending; 08C proposed
 
 **Execution plan:** [Phase 8 plan](../plan/08-rich-messaging.md)
 
@@ -32,7 +32,7 @@ decision; the in-app worker establishes a real delivery boundary.
 | Area | Proposed default |
 | --- | --- |
 | Search | PostgreSQL full-text, `simple` dictionary, AND terms, newest ID first |
-| Upload | Private S3-compatible quarantine; version-pinned scan and promotion |
+| Upload | Private Cloudflare R2; unique create-only quarantine keys; exact-byte scan and promotion |
 | Types | JPEG, PNG, UTF-8 plain text; reject SVG/HTML/PDF and executable formats |
 | Bounds | 10 MiB/file, 5 attachments/message, 10 distinct mentions/message |
 | URL lifetime | Upload 5 minutes; download 60 seconds |
@@ -41,8 +41,8 @@ decision; the in-app worker establishes a real delivery boundary.
 | Send retry key | Required for attachment/mention sends, retained at least 24 h |
 
 These are initial design choices, not measured capacity or provisioned services.
-Provider ADR must verify exact APIs, version immutability, size constraints,
-checksums, TLS, signed response headers, all-version deletion, scanner integration,
+Provider ADR must verify exact APIs, conditional-write immutability, size constraints,
+checksums, TLS, signed response headers, object deletion, scanner integration,
 cost and retention. Disable attachments if a mandatory capability is unavailable.
 
 Client controls content, query, filenames, declared size/type, IDs and retry keys.
@@ -79,6 +79,25 @@ query plans for selective/common terms. External search requires measured eviden
 [full-text indexes](https://www.postgresql.org/docs/16/textsearch-indexes.html)
 
 ## 4. Attachment HTTP contract — 08B
+
+### Implemented foundation and pending release gates
+
+Migration 9 implements reservations, unverified metadata, idempotent complete/cancel,
+attachment aggregate sequences, independent outbox purposes and fenced cleanup.
+Public initiation validates input then returns 503 while the scanner is pending.
+`ATTACHMENT_UPLOAD_ENABLED=true` fails startup. No ready/attached state, download,
+scan consumer, final promotion, message binding or realtime attachment event exists
+in this foundation. Nonempty message `attachment_ids` returns 503 before persistence.
+The table below describes the intended complete 08B contract; its download route is
+not registered yet.
+
+Room/account cascades currently set attachment parent references to NULL, retaining
+opaque object identity. The sweeper atomically creates cleanup intent and marks a
+tombstone deleting after the deadline, including orphaned/scanning reservations.
+This supports reservation cleanup; atomic cleanup for future attached messages and
+account/lifecycle producers remains pending. Scan intents are retained without a
+consumer; complete never means verified. No runtime path enables initiation yet.
+
 
 IDs are positive int64 JSON numbers. Room actions require current membership;
 upload state belongs to its authenticated uploader. Other members cannot inspect
@@ -126,7 +145,7 @@ DB compare-and-set/version checks. Complete/cancel/retries are idempotent. Compl
 only enqueues bounded work, not synchronous scan. Missing bytes are retryable before
 expiry. A ready file cannot be claimed twice; cancellation of attached files is 409.
 
-1. Worker pins quarantine **version ID**, checks actual length/SHA-256/type from
+1. Worker pins an immutable quarantine **object key and ETag**, checks actual length/SHA-256/type from
    bytes. HEAD/client metadata alone cannot establish type or cleanliness. Strictly
    decode allowed images, reject invalid/excessive dimensions (proposed 25 megapixels)
    with bounded decoder memory; reject invalid UTF-8/binary text.
@@ -134,33 +153,38 @@ expiry. A ready file cannot be claimed twice; cancellation of attached files is 
    response fails closed: never downloadable. Bounded retries end in quarantine/
    rejection and alert. Scratch app image has no antivirus binary; use a separate
    scanner rather than executing a shell command.
-3. Promote/copy **that version** to a server-only immutable private final object;
-   verify destination/checksum, then mark ready with final version. Retries never
+3. Promote **those exact verified bytes** to a unique server-only private final key
+   using create-only writes; verify destination/checksum, then mark ready with final identity. Retries never
    silently overwrite attached bytes.
 4. Failed DB finalization after promotion is reconciled/cleaned. No broad provider
    listing/deletion on request paths or inside `Hub.Run`.
 
-Presigned uploads are reusable until expiry and can overwrite a key. Scanning a
-mutable key then copying its latest version is unsafe. Mandatory provider proof
-must show pinned scan/read/copy or an equivalent immutable write protocol.
-[S3 upload overwrite semantics](https://docs.aws.amazon.com/AmazonS3/latest/userguide/PresignedUrlUploadObject.html),
-[versioning](https://docs.aws.amazon.com/AmazonS3/latest/userguide/Versioning.html)
+Cloudflare R2 has no S3 bucket versioning API. Each reservation uses a unique
+`quarantine/<uuid>` key. The PUT signature binds `If-None-Match: *`, Content-Type
+and Content-Length. Reuse must fail after the first successful create. Never delete
+and recreate this key while upload credentials remain valid. ETag is a consistency
+condition, not a SHA-256 proof: scan actual bytes and verify the declared checksum.
+Future promotion must consume the verified bytes and conditionally create a distinct
+final key; no unqualified copy of a mutable/latest source is acceptable.
 
-Logical quotas include reservations and clean/attached files; reserve atomically
-under a consistent room/user lock order. Release through an idempotent terminal
-transition. Reusable URLs can create extra quarantine versions: DB counters do not
-cap physical bytes. Limit pending URLs, budget physical storage separately and
-enforce provider lifecycle/cost alerts. Cancel does not revoke credentials: keep
-cancelled reservations and still-valid URLs in the quota/admission budget through
-expiry + provider-proven grace (proposed 10 minutes), rather than freeing budget
-for new uploads while old URLs can write. Track credential lifetime independently
-of ready/attached state. GC then removes **all** related versions and reconciles
-late writes. Delete markers alone do not reclaim versioned bytes.
+Real R2 tests must prove concurrent create-only PUT, signed header enforcement,
+size limits, CORS/browser upload, in-flight write completion and conditional reads.
+These gates remain pending and upload admission remains closed.
+[Cloudflare R2 S3 compatibility](https://developers.cloudflare.com/r2/api/s3/api/),
+[R2 presigned URLs](https://developers.cloudflare.com/r2/api/s3/presigned-urls/)
+
+Logical quotas include reservations and clean/attached files. Serialize new
+reservations using room/membership locks followed by user then room advisory quota
+locks. Retain cancelled reservations in quota through upload expiry plus a proposed
+10-minute grace, and release only after provider deletion and fenced database
+acknowledgement. Current foundation caps each user at 100 MiB and 10 outstanding
+reservations; room cap is 10 GiB. Physical-storage alerts/lifecycle rules and proof
+of the grace period remain deployment gates.
 
 Unattached ready files expire after 24 h. Message deletion immediately hides metadata
 and atomically writes cleanup intent; private deletion retries until confirmed.
 Room/account deletion schedules owned object cleanup before cascades lose keys.
-Retain minimal cleanup tombstones until all versions are removed. Storage outage
+Retain minimal cleanup tombstones until all related objects are removed. Storage outage
 does not undo committed deletion. Document backup retention; no legal hold assumed.
 
 ## 6. Send and lifecycle compatibility

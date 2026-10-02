@@ -21,10 +21,12 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 
+	"github.com/xuanphongtran/gogo-dl/internal/attachment"
 	"github.com/xuanphongtran/gogo-dl/internal/chat"
 	"github.com/xuanphongtran/gogo-dl/internal/config"
 	"github.com/xuanphongtran/gogo-dl/internal/database"
 	"github.com/xuanphongtran/gogo-dl/internal/httpserver"
+	"github.com/xuanphongtran/gogo-dl/internal/outbox"
 	"github.com/xuanphongtran/gogo-dl/internal/telemetry"
 	"github.com/xuanphongtran/gogo-dl/internal/user"
 	"github.com/xuanphongtran/gogo-dl/internal/ws"
@@ -82,9 +84,14 @@ func run() error {
 	var hub *ws.Hub
 	var srv *httpserver.Server
 	var observability *telemetry.Runtime
+	var stopCleanup context.CancelFunc
+	var cleanupDone chan struct{}
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(signalCtx), cfg.ShutdownTimeout)
 		defer cancel()
+		if stopCleanup != nil {
+			stopCleanup()
+		}
 		if srv != nil {
 			srv.BeginDrain()
 		}
@@ -104,6 +111,13 @@ func run() error {
 		for i := 0; i < pending; i++ {
 			if err := <-results; err != nil {
 				log.Warn().Msg("shutdown: request or socket drain reached its limit")
+			}
+		}
+		if cleanupDone != nil {
+			select {
+			case <-cleanupDone:
+			case <-ctx.Done():
+				log.Warn().Msg("shutdown: attachment cleanup reached its limit")
 			}
 		}
 		if observability != nil {
@@ -167,8 +181,23 @@ func run() error {
 	log.Info().Msg("ws hub running")
 	chatHandler := chat.NewHandler(chatSvc, hub)
 
+	attachmentRepo := attachment.NewRepository(db.DB)
+	var objectStore attachment.ObjectStore
+	if cfg.R2AccountID != "" {
+		objectStore, err = attachment.NewR2(cfg.R2AccountID, cfg.R2Bucket, cfg.R2AccessKeyID, cfg.R2SecretAccessKey)
+		if err != nil {
+			return fmt.Errorf("startup: attachment storage: %w", err)
+		}
+		cleanupCtx, cancelCleanup := context.WithCancel(signalCtx)
+		stopCleanup = cancelCleanup
+		cleanupDone = make(chan struct{})
+		worker := attachment.NewWorker(attachmentRepo, outbox.NewStore(db.DB), objectStore)
+		go func() { defer close(cleanupDone); worker.Run(cleanupCtx) }()
+	}
+	attachmentHandler := attachment.NewHandler(attachment.NewService(attachmentRepo, objectStore))
+
 	// ── 6. HTTP Server ────────────────────────────────────────────────────────
-	srv = httpserver.New(cfg, userHandler, chatHandler, httpserver.Options{Metrics: metrics, CheckDatabase: db.PingContext, RealtimeReady: hub.Ready})
+	srv = httpserver.New(cfg, userHandler, chatHandler, httpserver.Options{AttachmentHandler: attachmentHandler, Metrics: metrics, CheckDatabase: db.PingContext, RealtimeReady: hub.Ready})
 
 	// Start in a goroutine so we can listen for shutdown signals below.
 	serverErr := make(chan error, 1)

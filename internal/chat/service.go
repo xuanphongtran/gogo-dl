@@ -97,6 +97,9 @@ func (s *Service) SendMessage(ctx context.Context, userID int64, roomID int64, r
 	if req == nil {
 		return nil, apperror.ErrInvalidRequest
 	}
+	if len(req.AttachmentIDs) > 0 {
+		return nil, apperror.ErrAttachmentsUnavailable
+	}
 	content, ok := normalizeMessageContent(req.Content)
 	if !ok {
 		return nil, apperror.ErrInvalidRequest

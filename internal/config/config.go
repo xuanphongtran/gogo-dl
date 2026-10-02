@@ -24,6 +24,11 @@ const (
 // Config holds all configuration for the application.
 // Values are loaded from environment variables (optionally from a .env file).
 type Config struct {
+	R2AccountID             string
+	R2Bucket                string
+	R2AccessKeyID           string
+	R2SecretAccessKey       string
+	AttachmentUploadEnabled bool
 	// Server
 	ServerHost string
 	ServerPort string
@@ -173,6 +178,9 @@ func Load(envFiles ...string) (*Config, error) {
 		return nil, err
 	}
 
+	if err := cfg.loadAttachments(); err != nil {
+		return nil, err
+	}
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}

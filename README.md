@@ -462,3 +462,52 @@ configured `SHUTDOWN_TIMEOUT`.
 
 See [the operations guide](docs/observability.md) for metrics, dashboards, alerts,
 SLO definitions, deployment checks and local verification evidence.
+
+## Phase 08B: R2 attachment foundation (scanner pending)
+
+Cloudflare R2 is selected. The AWS SDK core signer signs requests locally using
+Cloudflare credentials; no AWS account is needed. All objects must remain private.
+Migration `000009` adds reservations, retained cleanup tombstones, attachment
+aggregate counters and independent outbox deliveries. This is not a complete
+attachment feature: scanning, promotion, downloads and message binding are pending.
+
+Set all four variables together to run the cleanup worker:
+`R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`.
+Use the account's 32-character lowercase hex ID and a private bucket name.
+Store credentials in local env files or Render secrets, never in Git.
+Docker Compose loads these through its existing `configs/.env` entry.
+Keep `ATTACHMENT_UPLOAD_ENABLED=false`; setting it true fails startup while the
+scanner and real R2 capability checks are pending. Without R2 configuration the
+cleanup worker is inactive and reservations retain quota/storage until configured.
+
+Authenticated routes under `/api/v1`:
+
+| Method | Route | Current behavior |
+| --- | --- | --- |
+| POST | `/rooms/:id/attachments/uploads` | Validates metadata + `Idempotency-Key`, then 503 (admission closed) |
+| GET | `/rooms/:id/attachments/:attachment_id` | 200 unverified metadata, uploader and current member only |
+| POST | `/rooms/:id/attachments/:attachment_id/complete` | 202 scan request/current state, never a clean verdict |
+| DELETE | `/rooms/:id/attachments/:attachment_id` | 204 idempotent cancel and delayed cleanup |
+
+Upload metadata fields: `filename`, `content_type`, `size_bytes`, `sha256`.
+Allowed types: JPEG, PNG, plain text; size 1–10 MiB; checksum 64 hex characters.
+Retry keys are 16–128 printable ASCII bytes. Quotas are 100 MiB and 10 outstanding
+reservations per user, 10 GiB per room. Nonempty message `attachment_ids` returns
+503 before persistence; ordinary text messages continue to work.
+
+Each reservation owns a unique `quarantine/<uuid>` key. Future PUT credentials bind
+`If-None-Match: *`, Content-Type and Content-Length with a five-minute deadline.
+Content-Length is set automatically by browsers and must match the declared size.
+The cleanup worker waits until this deadline plus ten minutes, keeps quota charged
+until deletion succeeds, and uses 30-second fenced leases and eight attempts with
+backoff. A storage outage never exposes unverified files. Cancel, account deletion
+and room deletion retain cleanup identity; orphaned reservations are swept later.
+Scan deliveries have no consumer yet. No attachment event is emitted on WebSocket.
+
+Monitor `domain_outbox_deliveries` for cleanup `dead` rows, failed attempts and oldest
+pending jobs, and `attachments` for orphaned/deleting rows and reserved bytes.
+Investigate the storage failure before any operator-controlled replay; dead jobs
+retain their keys and quota. No automatic retention policy removes these records.
+Real R2 conditional PUT, concurrent writes, signed size/type headers, browser CORS,
+late writes and exact-byte scanner/promotion tests are required before opening
+admission. See [spec](spec/08-rich-messaging.md) and [plan](plan/08-rich-messaging.md).
