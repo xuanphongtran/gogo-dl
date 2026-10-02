@@ -1,0 +1,102 @@
+rule_files: [alerts.yml]
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'up{job="gogo-dl",instance="test"}'
+        values: '1 0 0 0 1 1'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: GogoTargetDown
+        exp_alerts:
+          - exp_labels: {job: gogo-dl, instance: test, severity: critical}
+            exp_annotations: {summary: "Gogo metrics target is unreachable; check process and private scrape access"}
+      - eval_time: 5m
+        alertname: GogoTargetDown
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'gogo_http_availability_total{result="good"}'
+        values: '0+120x30'
+      - series: 'gogo_http_availability_total{result="bad"}'
+        values: '0+2x20 40+0x15'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: GogoHTTPErrorBudgetBurn
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations: {summary: "Authenticated HTTP failures exceed the proposed 0.1% budget"}
+      - eval_time: 27m
+        alertname: GogoHTTPErrorBudgetBurn
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'gogo_db_max_open_connections{instance="test"}'
+        values: '25+0x30'
+      - series: 'gogo_db_in_use_connections{instance="test"}'
+        values: '24+0x10 5+0x20'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: GogoDBPoolSaturated
+        exp_alerts:
+          - exp_labels: {instance: test, severity: warning}
+            exp_annotations: {summary: "DB pool exceeds 80%; inspect waits and slow queries"}
+      - eval_time: 17m
+        alertname: GogoDBPoolSaturated
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'gogo_ws_dropped_total{queue="client",reason="full"}'
+        values: '0+1x10 10+0x15'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: GogoRealtimeDrops
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations: {summary: "Best-effort realtime events are being dropped; recover history over HTTP"}
+      - eval_time: 17m
+        alertname: GogoRealtimeDrops
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'gogo_trace_export_errors_total{instance="test"}'
+        values: '0+1x10 10+0x15'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: GogoTraceExportFailure
+        exp_alerts:
+          - exp_labels: {instance: test, severity: warning}
+            exp_annotations: {summary: "Trace export is failing; inspect collector connectivity and secret configuration"}
+      - eval_time: 17m
+        alertname: GogoTraceExportFailure
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'gogo_ws_drain_total{result="forced"}'
+        values: '0+1x10 10+0x15'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: GogoForcedSocketDrain
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations: {summary: "Shutdown forced sockets closed; check slow clients and platform grace"}
+      - eval_time: 17m
+        alertname: GogoForcedSocketDrain
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'gogo_http_request_duration_seconds_bucket{route="/api/v1/users/me",method="GET",status_class="2xx",le="0.3"}'
+        values: '0+0x10 100+100x20'
+      - series: 'gogo_http_request_duration_seconds_bucket{route="/api/v1/users/me",method="GET",status_class="2xx",le="1"}'
+        values: '0+100x31'
+      - series: 'gogo_http_request_duration_seconds_bucket{route="/api/v1/users/me",method="GET",status_class="2xx",le="+Inf"}'
+        values: '0+100x31'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: GogoHTTPP95High
+        exp_alerts:
+          - exp_labels: {route: /api/v1/users/me, severity: warning}
+            exp_annotations: {summary: "Successful API route p95 exceeds proposed 300 ms"}
+      - eval_time: 17m
+        alertname: GogoHTTPP95High
+        exp_alerts: []

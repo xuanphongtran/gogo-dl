@@ -8,6 +8,7 @@ import (
 
 	"github.com/lib/pq"
 	"github.com/xuanphongtran/gogo-dl/pkg/apperror"
+	"go.opentelemetry.io/otel"
 )
 
 // DeleteAccount removes a user atomically while preserving message history.
@@ -15,6 +16,8 @@ import (
 // database foreign key so a concurrent room creation cannot leave an
 // ownerless room.
 func (r *postgresRepository) DeleteAccount(ctx context.Context, id int64) error {
+	ctx, span := otel.Tracer("gogo-dl/user").Start(ctx, "user.repository.DeleteAccount")
+	defer span.End()
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("user repo DeleteAccount begin: %w", err)

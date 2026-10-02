@@ -11,6 +11,9 @@ info:
     Each client command occupies one WebSocket frame. The server may batch
     several event envelopes into one text frame, separated by newline (`\n`).
     Parse each nonempty line as one JSON envelope.
+    During shutdown, new upgrades are rejected with HTTP 503. Registered sockets
+    receive close code 1001; slow sockets may be forcibly closed at the deadline.
+    Reconnect with backoff and fetch durable history through REST.
 defaultContentType: application/json
 servers:
   local:

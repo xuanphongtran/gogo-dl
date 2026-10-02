@@ -7,12 +7,15 @@ import (
 	"fmt"
 
 	"github.com/xuanphongtran/gogo-dl/pkg/apperror"
+	"go.opentelemetry.io/otel"
 )
 
 // CreateRoomWithMember atomically creates a room and its creator membership.
 // The repository owns the transaction because both writes are one durable
 // use case and must never be reported as partially successful.
 func (r *postgresRepository) CreateRoomWithMember(ctx context.Context, room *Room, userID int64) error {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.CreateRoomWithMember")
+	defer span.End()
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("chat repo CreateRoomWithMember begin: %w", err)
@@ -53,6 +56,8 @@ func (r *postgresRepository) CreateRoomWithMember(ctx context.Context, room *Roo
 // RemoveMember deletes durable membership and reports when the target was not
 // a member. The caller performs WebSocket revocation only after this succeeds.
 func (r *postgresRepository) RemoveMember(ctx context.Context, roomID, userID int64) error {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.RemoveMember")
+	defer span.End()
 	result, err := r.db.ExecContext(ctx,
 		`DELETE FROM room_members WHERE room_id = $1 AND user_id = $2 AND role <> 'owner'`,
 		roomID, userID,
@@ -80,6 +85,8 @@ func (r *postgresRepository) RemoveMember(ctx context.Context, roomID, userID in
 // RemoveMemberWithAuthorization keeps role reads and deletion in one transaction.
 // The callback belongs to the service so persistence does not define permissions.
 func (r *postgresRepository) RemoveMemberWithAuthorization(ctx context.Context, roomID, actorID, userID int64, authorize func(actor, target *RoomMember) error) (*RoomMember, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.RemoveMemberWithAuthorization")
+	defer span.End()
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("chat repo RemoveMemberWithAuthorization begin: %w", err)

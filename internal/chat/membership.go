@@ -6,12 +6,15 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/xuanphongtran/gogo-dl/pkg/apperror"
+	"go.opentelemetry.io/otel"
 )
 
 // RemoveMember removes durable membership first and then revokes any active
 // WebSocket subscription. PostgreSQL remains the source of truth if the
 // best-effort in-memory control path is unavailable.
 func (s *Service) RemoveMember(ctx context.Context, requesterID, roomID, userID int64) error {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.service.RemoveMember")
+	defer span.End()
 	if requesterID != userID {
 		return apperror.ErrForbidden
 	}

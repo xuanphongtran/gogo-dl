@@ -9,6 +9,7 @@ import (
 )
 
 // EditMessage edits the authenticated author's message.
+// @Description  Content must be nonblank and at most 4000 UTF-8 bytes after trimming whitespace.
 // @Summary      Edit a message authored by the current member
 // @Tags         messages
 // @Accept       json
@@ -18,12 +19,12 @@ import (
 // @Param        message_id  path  int64              true "Message ID"
 // @Param        body        body  EditMessageRequest true "Content and expected revision"
 // @Success      200 {object} Message
-// @Failure      400 {object} apperror.AppError
+// @Failure      400 {object} apperror.AppError "Invalid request, including content exceeding the message limit"
 // @Failure      401 {object} apperror.AppError
 // @Failure      403 {object} apperror.AppError
 // @Failure      404 {object} apperror.AppError
 // @Failure      409 {object} apperror.AppError
-// @Failure      413 {object} apperror.AppError
+// @Failure      413 {object} apperror.AppError "Entire HTTP request body exceeds HTTP_MAX_BODY_BYTES"
 // @Failure      500 {object} apperror.AppError
 // @Router       /api/v1/rooms/{id}/messages/{message_id} [patch]
 func (h *Handler) EditMessage(c *gin.Context) {

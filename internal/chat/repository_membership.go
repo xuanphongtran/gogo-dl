@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/xuanphongtran/gogo-dl/pkg/apperror"
+	"go.opentelemetry.io/otel"
 )
 
 type roomViewRow struct {
@@ -37,6 +38,8 @@ func (r roomViewRow) room() *Room {
 }
 
 func (r *postgresRepository) GetRoomForUser(ctx context.Context, roomID, userID int64) (*Room, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.GetRoomForUser")
+	defer span.End()
 	var row roomViewRow
 	err := r.db.GetContext(ctx, &row, `
 		SELECT r.id, r.name, r.created_by, r.created_at, r.visibility, rm.role
@@ -55,6 +58,8 @@ func (r *postgresRepository) GetRoomForUser(ctx context.Context, roomID, userID 
 }
 
 func (r *postgresRepository) ListRoomsForUser(ctx context.Context, userID int64) ([]*Room, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.ListRoomsForUser")
+	defer span.End()
 	var rows []roomViewRow
 	if err := r.db.SelectContext(ctx, &rows, `
 		SELECT r.id, r.name, r.created_by, r.created_at, r.visibility, rm.role
@@ -73,6 +78,8 @@ func (r *postgresRepository) ListRoomsForUser(ctx context.Context, userID int64)
 }
 
 func (r *postgresRepository) JoinPublicRoom(ctx context.Context, roomID, userID int64) (bool, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.JoinPublicRoom")
+	defer span.End()
 	result, err := r.db.ExecContext(ctx, `
 		INSERT INTO room_members (room_id, user_id, role)
 		SELECT $1, $2, 'member'
@@ -92,6 +99,8 @@ func (r *postgresRepository) JoinPublicRoom(ctx context.Context, roomID, userID 
 }
 
 func (r *postgresRepository) GetMember(ctx context.Context, roomID, userID int64) (*RoomMember, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.GetMember")
+	defer span.End()
 	var member RoomMember
 	err := r.db.GetContext(ctx, &member, `
 		SELECT rm.room_id, rm.user_id, u.username, rm.role, rm.joined_at
@@ -108,6 +117,8 @@ func (r *postgresRepository) GetMember(ctx context.Context, roomID, userID int64
 }
 
 func (r *postgresRepository) ListMembers(ctx context.Context, roomID int64) ([]*RoomMember, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.ListMembers")
+	defer span.End()
 	var members []*RoomMember
 	if err := r.db.SelectContext(ctx, &members, `
 		SELECT rm.room_id, rm.user_id, u.username, rm.role, rm.joined_at
@@ -121,6 +132,8 @@ func (r *postgresRepository) ListMembers(ctx context.Context, roomID int64) ([]*
 }
 
 func (r *postgresRepository) SetMemberRole(ctx context.Context, roomID, userID int64, role RoomRole) error {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.SetMemberRole")
+	defer span.End()
 	result, err := r.db.ExecContext(ctx, `
 		UPDATE room_members
 		SET role = $3
@@ -146,6 +159,8 @@ func (r *postgresRepository) SetMemberRole(ctx context.Context, roomID, userID i
 }
 
 func (r *postgresRepository) TransferOwnership(ctx context.Context, roomID, currentOwnerID, targetUserID int64) error {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.TransferOwnership")
+	defer span.End()
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("chat repo TransferOwnership begin: %w", err)
@@ -202,6 +217,8 @@ func (r *postgresRepository) TransferOwnership(ctx context.Context, roomID, curr
 }
 
 func (r *postgresRepository) CreateOrGetInvitation(ctx context.Context, roomID, inviterID, inviteeID int64) (*Invitation, bool, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.CreateOrGetInvitation")
+	defer span.End()
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return nil, false, fmt.Errorf("chat repo CreateOrGetInvitation begin: %w", err)
@@ -316,6 +333,8 @@ func (r *postgresRepository) CreateOrGetInvitation(ctx context.Context, roomID, 
 }
 
 func (r *postgresRepository) ListInvitations(ctx context.Context, inviteeID int64, status InvitationStatus, limit int) ([]*Invitation, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.ListInvitations")
+	defer span.End()
 	if limit <= 0 {
 		limit = 50
 	}
@@ -336,6 +355,8 @@ func (r *postgresRepository) ListInvitations(ctx context.Context, inviteeID int6
 }
 
 func (r *postgresRepository) RespondInvitation(ctx context.Context, invitationID, inviteeID int64, status InvitationStatus) (*Invitation, bool, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.RespondInvitation")
+	defer span.End()
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return nil, false, fmt.Errorf("chat repo RespondInvitation begin: %w", err)

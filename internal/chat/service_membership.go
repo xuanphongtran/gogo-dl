@@ -8,23 +8,30 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/xuanphongtran/gogo-dl/internal/ws"
 	"github.com/xuanphongtran/gogo-dl/pkg/apperror"
+	"go.opentelemetry.io/otel"
 )
 
 // GetRoomForUser returns a room only when it is public or the caller is a
 // member. The repository deliberately hides private-room existence from
 // non-members.
 func (s *Service) GetRoomForUser(ctx context.Context, userID, roomID int64) (*Room, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.service.GetRoomForUser")
+	defer span.End()
 	return s.repo.GetRoomForUser(ctx, roomID, userID)
 }
 
 // ListRoomsForUser returns discoverable public rooms and private rooms the
 // caller belongs to.
 func (s *Service) ListRoomsForUser(ctx context.Context, userID int64) ([]*Room, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.service.ListRoomsForUser")
+	defer span.End()
 	return s.repo.ListRoomsForUser(ctx, userID)
 }
 
 // ListMessagesForUser enforces membership before returning room history.
 func (s *Service) ListMessagesForUser(ctx context.Context, userID, roomID int64, q *ListMessagesQuery) ([]*Message, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.service.ListMessagesForUser")
+	defer span.End()
 	if _, err := s.repo.GetRoomForUser(ctx, roomID, userID); err != nil {
 		return nil, err
 	}
@@ -36,6 +43,8 @@ func (s *Service) ListMessagesForUser(ctx context.Context, userID, roomID int64,
 
 // JoinPublicRoom adds a user to a public room. The operation is idempotent.
 func (s *Service) JoinPublicRoom(ctx context.Context, roomID, userID int64) error {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.service.JoinPublicRoom")
+	defer span.End()
 	room, err := s.repo.GetRoomByID(ctx, roomID)
 	if err != nil {
 		return err
@@ -55,6 +64,8 @@ func (s *Service) JoinPublicRoom(ctx context.Context, roomID, userID int64) erro
 
 // ListMembers returns a room's member projection after checking membership.
 func (s *Service) ListMembers(ctx context.Context, actorID, roomID int64) ([]*RoomMember, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.service.ListMembers")
+	defer span.End()
 	if err := s.requireMember(ctx, roomID, actorID); err != nil {
 		return nil, err
 	}
@@ -64,6 +75,8 @@ func (s *Service) ListMembers(ctx context.Context, actorID, roomID int64) ([]*Ro
 // LeaveRoom removes the caller's membership. Owners must transfer ownership
 // first so every room retains exactly one owner.
 func (s *Service) LeaveRoom(ctx context.Context, userID, roomID int64) error {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.service.LeaveRoom")
+	defer span.End()
 	member, err := s.repo.GetMember(ctx, roomID, userID)
 	if err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
@@ -99,6 +112,8 @@ func (s *Service) leaveMissingMembership(ctx context.Context, roomID int64) erro
 // Invite creates or retries an invitation after checking owner/moderator
 // permissions. Invitation persistence is idempotent in the repository.
 func (s *Service) Invite(ctx context.Context, actorID, roomID, inviteeID int64) (*Invitation, bool, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.service.Invite")
+	defer span.End()
 	if actorID == inviteeID {
 		return nil, false, apperror.ErrInvalidRequest
 	}
@@ -127,6 +142,8 @@ func (s *Service) Invite(ctx context.Context, actorID, roomID, inviteeID int64) 
 
 // ListInvitations returns only invitations addressed to the caller.
 func (s *Service) ListInvitations(ctx context.Context, userID int64, status InvitationStatus, limit int) ([]*Invitation, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.service.ListInvitations")
+	defer span.End()
 	if status == "" {
 		status = InvitationPending
 	}
@@ -143,6 +160,8 @@ func (s *Service) ListInvitations(ctx context.Context, userID int64, status Invi
 
 // RespondInvitation accepts or declines an invitation owned by the caller.
 func (s *Service) RespondInvitation(ctx context.Context, userID, invitationID int64, status InvitationStatus) (*Invitation, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.service.RespondInvitation")
+	defer span.End()
 	if status != InvitationAccepted && status != InvitationDeclined {
 		return nil, apperror.ErrInvalidRequest
 	}
@@ -173,6 +192,8 @@ func (s *Service) RespondInvitation(ctx context.Context, userID, invitationID in
 // RemoveMember removes a target after checking the actor's role. It is not a
 // permanent ban; public users may join again explicitly after removal.
 func (s *Service) RemoveMemberAs(ctx context.Context, actorID, roomID, targetID int64) error {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.service.RemoveMemberAs")
+	defer span.End()
 	target, err := s.repo.RemoveMemberWithAuthorization(ctx, roomID, actorID, targetID, func(actor, target *RoomMember) error {
 		if actor == nil {
 			return apperror.ErrForbidden
@@ -202,6 +223,8 @@ func (s *Service) RemoveMemberAs(ctx context.Context, actorID, roomID, targetID 
 // ChangeMemberRole promotes or demotes a non-owner member. Only the owner may
 // change roles.
 func (s *Service) ChangeMemberRole(ctx context.Context, actorID, roomID, targetID int64, role RoomRole) error {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.service.ChangeMemberRole")
+	defer span.End()
 	actor, err := s.repo.GetMember(ctx, roomID, actorID)
 	if err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
@@ -232,6 +255,8 @@ func (s *Service) ChangeMemberRole(ctx context.Context, actorID, roomID, targetI
 // TransferOwnership atomically changes the room owner and preserves the
 // previous owner's membership as a moderator.
 func (s *Service) TransferOwnership(ctx context.Context, actorID, roomID, targetID int64) error {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.service.TransferOwnership")
+	defer span.End()
 	actor, err := s.repo.GetMember(ctx, roomID, actorID)
 	if err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {

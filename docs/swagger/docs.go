@@ -947,6 +947,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
+                "description": "Content must be nonblank and at most 4000 UTF-8 bytes after trimming whitespace.",
                 "consumes": [
                     "application/json"
                 ],
@@ -983,7 +984,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Invalid request, including content exceeding the message limit",
                         "schema": {
                             "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
                         }
@@ -1007,7 +1008,7 @@ const docTemplate = `{
                         }
                     },
                     "413": {
-                        "description": "Request Entity Too Large",
+                        "description": "Entire HTTP request body exceeds HTTP_MAX_BODY_BYTES",
                         "schema": {
                             "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
                         }
@@ -1096,6 +1097,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
+                "description": "Content must be nonblank and at most 4000 UTF-8 bytes after trimming whitespace.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1139,7 +1141,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Invalid request, including content exceeding the message limit",
                         "schema": {
                             "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
                         }
@@ -1169,7 +1171,7 @@ const docTemplate = `{
                         }
                     },
                     "413": {
-                        "description": "Request Entity Too Large",
+                        "description": "Entire HTTP request body exceeds HTTP_MAX_BODY_BYTES",
                         "schema": {
                             "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
                         }
@@ -1686,6 +1688,75 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/livez": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system"
+                ],
+                "summary": "Check process liveness",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_httpserver.LivenessResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/readyz": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system"
+                ],
+                "summary": "Check HTTP readiness",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_httpserver.ReadinessResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/internal_httpserver.ReadinessResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/readyz/realtime": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system"
+                ],
+                "summary": "Check realtime admission readiness",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_httpserver.ReadinessResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/internal_httpserver.ReadinessResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -1795,6 +1866,7 @@ const docTemplate = `{
             ],
             "properties": {
                 "content": {
+                    "description": "Content must be nonblank and at most 4000 UTF-8 bytes after trimming whitespace.",
                     "type": "string",
                     "maxLength": 4000,
                     "minLength": 1
@@ -1974,7 +2046,12 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "role": {
-                    "$ref": "#/definitions/internal_chat.RoomRole"
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/internal_chat.RoomRole"
+                        }
+                    ],
+                    "x-nullable": true
                 },
                 "visibility": {
                     "$ref": "#/definitions/internal_chat.RoomVisibility"
@@ -2043,6 +2120,7 @@ const docTemplate = `{
             ],
             "properties": {
                 "content": {
+                    "description": "Content must be nonblank and at most 4000 UTF-8 bytes after trimming whitespace.",
                     "type": "string",
                     "maxLength": 4000,
                     "minLength": 1
@@ -2069,6 +2147,22 @@ const docTemplate = `{
                 },
                 "time": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_httpserver.LivenessResponse": {
+            "type": "object",
+            "properties": {
+                "live": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "internal_httpserver.ReadinessResponse": {
+            "type": "object",
+            "properties": {
+                "ready": {
+                    "type": "boolean"
                 }
             }
         },

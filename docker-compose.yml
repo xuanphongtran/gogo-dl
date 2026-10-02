@@ -22,8 +22,11 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: gogo-app
+    # Leave time for the default 15-second application drain.
+    stop_grace_period: 20s
     restart: unless-stopped
     env_file:
+      # Includes telemetry settings; metrics has no published host port.
       - configs/.env
     environment:
       # Override DB_HOST so the app reaches the postgres *service*, not localhost.

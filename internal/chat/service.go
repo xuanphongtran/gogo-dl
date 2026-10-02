@@ -8,6 +8,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/xuanphongtran/gogo-dl/internal/ws"
 	"github.com/xuanphongtran/gogo-dl/pkg/apperror"
+	"go.opentelemetry.io/otel"
 )
 
 // Service encapsulates business logic for the chat domain.
@@ -26,6 +27,8 @@ func NewService(repo Repository, hub *ws.Hub) *Service {
 
 // CreateRoom creates a new room and automatically adds the creator as a member.
 func (s *Service) CreateRoom(ctx context.Context, creatorID int64, req *CreateRoomRequest) (*Room, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.service.CreateRoom")
+	defer span.End()
 	if req == nil {
 		return nil, apperror.ErrInvalidRequest
 	}
@@ -59,16 +62,22 @@ func (s *Service) CreateRoom(ctx context.Context, creatorID int64, req *CreateRo
 
 // GetRoom fetches a room by ID.
 func (s *Service) GetRoom(ctx context.Context, roomID int64) (*Room, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.service.GetRoom")
+	defer span.End()
 	return s.repo.GetRoomByID(ctx, roomID)
 }
 
 // ListRooms returns all available rooms.
 func (s *Service) ListRooms(ctx context.Context) ([]*Room, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.service.ListRooms")
+	defer span.End()
 	return s.repo.ListRooms(ctx)
 }
 
 // JoinRoom adds a user to a room.
 func (s *Service) JoinRoom(ctx context.Context, roomID, userID int64) error {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.service.JoinRoom")
+	defer span.End()
 	return s.JoinPublicRoom(ctx, roomID, userID)
 }
 
@@ -83,6 +92,8 @@ func (s *Service) JoinRoom(ctx context.Context, roomID, userID int64) error {
 //  3. Call hub.Broadcast(roomID, wsMessage) — non-blocking channel send.
 //     The Hub's Run() goroutine fans the message out to all connected clients.
 func (s *Service) SendMessage(ctx context.Context, userID int64, roomID int64, req *SendMessageRequest, _ string) (*Message, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.service.SendMessage")
+	defer span.End()
 	if req == nil {
 		return nil, apperror.ErrInvalidRequest
 	}
@@ -136,6 +147,8 @@ func (s *Service) SendMessage(ctx context.Context, userID int64, roomID int64, r
 
 // ListMessages returns paginated message history for a room.
 func (s *Service) ListMessages(ctx context.Context, roomID int64, q *ListMessagesQuery) ([]*Message, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.service.ListMessages")
+	defer span.End()
 	if _, err := s.repo.GetRoomByID(ctx, roomID); err != nil {
 		return nil, err
 	}

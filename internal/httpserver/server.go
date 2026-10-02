@@ -3,7 +3,10 @@ package httpserver
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -20,6 +23,10 @@ import (
 // Server wraps the standard library http.Server with graceful-shutdown support.
 type Server struct {
 	httpServer *http.Server
+	lifecycle  Lifecycle
+	options    Options
+	probeMu    sync.Mutex
+	probeCache atomic.Pointer[probeResult]
 }
 
 // HealthResponse is returned by the unauthenticated health endpoint.
@@ -44,7 +51,12 @@ func New(
 	cfg *config.Config,
 	userHandler *user.Handler,
 	chatHandler *chat.Handler,
+	options ...Options,
 ) *Server {
+	s := &Server{}
+	if len(options) > 0 {
+		s.options = options[0]
+	}
 	if cfg.IsProd() {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -61,6 +73,7 @@ func New(
 
 	// ── Global middleware ─────────────────────────────────────────────────────
 	r.Use(middleware.RequestID())
+	r.Use(middleware.Telemetry(s.options.Metrics, cfg))
 	r.Use(middleware.RequestBodyLimit(cfg.HTTPMaxBodyBytes))
 	r.Use(middleware.Recover())
 	r.Use(middleware.Logger())
@@ -68,6 +81,9 @@ func New(
 
 	// ── Health check (no auth) ────────────────────────────────────────────────
 	r.GET("/health", health)
+	r.GET("/livez", live)
+	r.GET("/readyz", s.readyHTTP)
+	r.GET("/readyz/realtime", s.readyRealtime)
 
 	// Swagger is intentionally available only outside production. The generated
 	// document contains the public API contract but does not provide auth.
@@ -77,6 +93,7 @@ func New(
 
 	// ── API v1 ────────────────────────────────────────────────────────────────
 	v1 := r.Group("/api/v1")
+	v1.Use(s.admission())
 
 	// public: routes that don't need authentication
 	public := v1.Group("")
@@ -101,17 +118,16 @@ func New(
 	wsRoutes.Use(middleware.Auth(cfg))
 	chatHandler.RegisterWebSocketRoute(wsRoutes, middleware.RateLimit(wsLimiter, middleware.WebSocketKey))
 
-	return &Server{
-		httpServer: &http.Server{
-			Addr:              cfg.Addr(),
-			Handler:           r,
-			ReadHeaderTimeout: 5 * time.Second,
-			ReadTimeout:       15 * time.Second,
-			WriteTimeout:      15 * time.Second,
-			MaxHeaderBytes:    cfg.HTTPMaxHeaderBytes,
-			IdleTimeout:       60 * time.Second,
-		},
+	s.httpServer = &http.Server{
+		Addr:              cfg.Addr(),
+		Handler:           r,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		MaxHeaderBytes:    cfg.HTTPMaxHeaderBytes,
+		IdleTimeout:       60 * time.Second,
 	}
+	return s
 }
 
 // Start begins listening for incoming connections.
@@ -124,9 +140,14 @@ func (s *Server) Start() error {
 	return nil
 }
 
-// Shutdown gracefully stops the HTTP server, waiting up to `timeout` for
+// Shutdown gracefully stops the HTTP server, using the caller's deadline for
 // in-flight requests to complete.
 func (s *Server) Shutdown(ctx context.Context) error {
+	s.BeginDrain()
 	log.Info().Msg("http: server shutting down")
-	return s.httpServer.Shutdown(ctx)
+	err := s.httpServer.Shutdown(ctx)
+	if err != nil {
+		err = errors.Join(err, s.httpServer.Close())
+	}
+	return err
 }

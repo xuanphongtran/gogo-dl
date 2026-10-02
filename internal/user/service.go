@@ -7,6 +7,7 @@ import (
 	"github.com/xuanphongtran/gogo-dl/internal/config"
 	"github.com/xuanphongtran/gogo-dl/internal/middleware"
 	"github.com/xuanphongtran/gogo-dl/pkg/apperror"
+	"go.opentelemetry.io/otel"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -23,6 +24,8 @@ func NewService(repo Repository, cfg *config.Config) *Service {
 
 // Register creates a new user account and returns a token pair.
 func (s *Service) Register(ctx context.Context, req *RegisterRequest) (*middleware.TokenPair, error) {
+	ctx, span := otel.Tracer("gogo-dl/user").Start(ctx, "user.service.Register")
+	defer span.End()
 	if req == nil {
 		return nil, apperror.ErrInvalidRequest
 	}
@@ -53,6 +56,8 @@ func (s *Service) Register(ctx context.Context, req *RegisterRequest) (*middlewa
 
 // Login verifies credentials and returns a token pair on success.
 func (s *Service) Login(ctx context.Context, req *LoginRequest) (*middleware.TokenPair, error) {
+	ctx, span := otel.Tracer("gogo-dl/user").Start(ctx, "user.service.Login")
+	defer span.End()
 	if req == nil || req.Password == "" {
 		return nil, apperror.ErrInvalidRequest
 	}
@@ -75,6 +80,8 @@ func (s *Service) Login(ctx context.Context, req *LoginRequest) (*middleware.Tok
 
 // RefreshTokens validates a refresh token and issues a new pair.
 func (s *Service) RefreshTokens(ctx context.Context, refreshToken string) (*middleware.TokenPair, error) {
+	ctx, span := otel.Tracer("gogo-dl/user").Start(ctx, "user.service.RefreshTokens")
+	defer span.End()
 	claims, err := middleware.ParseRefreshToken(s.cfg, refreshToken)
 	if err != nil {
 		return nil, apperror.ErrUnauthorized
@@ -90,6 +97,8 @@ func (s *Service) RefreshTokens(ctx context.Context, refreshToken string) (*midd
 
 // GetProfile returns the public profile of a user.
 func (s *Service) GetProfile(ctx context.Context, userID int64) (*ProfileResponse, error) {
+	ctx, span := otel.Tracer("gogo-dl/user").Start(ctx, "user.service.GetProfile")
+	defer span.End()
 	u, err := s.repo.GetByID(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -99,6 +108,8 @@ func (s *Service) GetProfile(ctx context.Context, userID int64) (*ProfileRespons
 
 // UpdateProfile applies profile changes and returns the updated profile.
 func (s *Service) UpdateProfile(ctx context.Context, userID int64, req *UpdateProfileRequest) (*ProfileResponse, error) {
+	ctx, span := otel.Tracer("gogo-dl/user").Start(ctx, "user.service.UpdateProfile")
+	defer span.End()
 	if req == nil {
 		return nil, apperror.ErrInvalidRequest
 	}
@@ -129,6 +140,8 @@ func (s *Service) UpdateProfile(ctx context.Context, userID int64, req *UpdatePr
 
 // DeleteAccount removes a user account. Only the account owner may do this.
 func (s *Service) DeleteAccount(ctx context.Context, requesterID, targetID int64) error {
+	ctx, span := otel.Tracer("gogo-dl/user").Start(ctx, "user.service.DeleteAccount")
+	defer span.End()
 	if requesterID != targetID {
 		return apperror.ErrForbidden
 	}

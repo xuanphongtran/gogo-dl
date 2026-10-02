@@ -8,6 +8,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/xuanphongtran/gogo-dl/pkg/apperror"
+	"go.opentelemetry.io/otel"
 )
 
 // Repository defines data-access operations for the chat domain.
@@ -60,6 +61,8 @@ func NewRepository(db *sqlx.DB) Repository {
 // ── Room ──────────────────────────────────────────────────────────────────────
 
 func (r *postgresRepository) CreateRoom(ctx context.Context, room *Room) error {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.CreateRoom")
+	defer span.End()
 	query := `
 		INSERT INTO rooms (name, created_by, visibility)
 		VALUES (:name, :created_by, COALESCE(NULLIF(:visibility, ''), 'public'))
@@ -84,6 +87,8 @@ func (r *postgresRepository) CreateRoom(ctx context.Context, room *Room) error {
 }
 
 func (r *postgresRepository) GetRoomByID(ctx context.Context, id int64) (*Room, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.GetRoomByID")
+	defer span.End()
 	var room Room
 	err := r.db.GetContext(ctx, &room, `SELECT id, name, created_by, created_at, visibility FROM rooms WHERE id = $1`, id)
 	if err != nil {
@@ -96,6 +101,8 @@ func (r *postgresRepository) GetRoomByID(ctx context.Context, id int64) (*Room, 
 }
 
 func (r *postgresRepository) ListRooms(ctx context.Context) ([]*Room, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.ListRooms")
+	defer span.End()
 	var rooms []*Room
 	err := r.db.SelectContext(ctx, &rooms, `SELECT id, name, created_by, created_at, visibility FROM rooms ORDER BY created_at DESC`)
 	if err != nil {
@@ -107,6 +114,8 @@ func (r *postgresRepository) ListRooms(ctx context.Context) ([]*Room, error) {
 // ── Members ───────────────────────────────────────────────────────────────────
 
 func (r *postgresRepository) AddMember(ctx context.Context, roomID, userID int64) error {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.AddMember")
+	defer span.End()
 	_, err := r.db.ExecContext(ctx,
 		`INSERT INTO room_members (room_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
 		roomID, userID,
@@ -121,6 +130,8 @@ func (r *postgresRepository) AddMember(ctx context.Context, roomID, userID int64
 }
 
 func (r *postgresRepository) IsMember(ctx context.Context, roomID, userID int64) (bool, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.IsMember")
+	defer span.End()
 	var count int
 	err := r.db.GetContext(ctx, &count,
 		`SELECT COUNT(*) FROM room_members WHERE room_id = $1 AND user_id = $2`,
@@ -135,6 +146,8 @@ func (r *postgresRepository) IsMember(ctx context.Context, roomID, userID int64)
 // ── Messages ──────────────────────────────────────────────────────────────────
 
 func (r *postgresRepository) CreateMessage(ctx context.Context, msg *Message) error {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.CreateMessage")
+	defer span.End()
 	query := `
 		INSERT INTO messages (room_id, user_id, content)
 		VALUES (:room_id, :user_id, :content)
@@ -162,6 +175,8 @@ func (r *postgresRepository) CreateMessage(ctx context.Context, msg *Message) er
 // ListMessages returns up to `limit` messages in a room, with cursor-based pagination.
 // If beforeID > 0, only messages with id < beforeID are returned (older messages).
 func (r *postgresRepository) ListMessages(ctx context.Context, roomID int64, limit int, beforeID int64) ([]*Message, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.ListMessages")
+	defer span.End()
 	if limit <= 0 {
 		limit = 50 // sensible default
 	}

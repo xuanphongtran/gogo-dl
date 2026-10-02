@@ -36,7 +36,7 @@ type Room struct {
 	CreatedBy  int64          `db:"created_by"  json:"created_by"`
 	CreatedAt  time.Time      `db:"created_at"  json:"created_at"`
 	Visibility RoomVisibility `db:"visibility" json:"visibility"`
-	Role       *RoomRole      `db:"role"        json:"role"`
+	Role       *RoomRole      `db:"role"        json:"role" extensions:"x-nullable"`
 }
 
 // Message is a single chat message sent within a room.
@@ -105,11 +105,13 @@ type ListInvitationsQuery struct {
 
 // SendMessageRequest is the body for POST /rooms/:id/messages.
 type SendMessageRequest struct {
+	// Content must be nonblank and at most 4000 UTF-8 bytes after trimming whitespace.
 	Content string `json:"content" binding:"required,min=1,max=4000"`
 }
 
 // EditMessageRequest contains new content and the message revision being edited.
 type EditMessageRequest struct {
+	// Content must be nonblank and at most 4000 UTF-8 bytes after trimming whitespace.
 	Content  string `json:"content" binding:"required,min=1,max=4000"`
 	Revision int64  `json:"revision" binding:"required,min=1"`
 }

@@ -7,14 +7,19 @@ import (
 	"fmt"
 
 	"github.com/xuanphongtran/gogo-dl/pkg/apperror"
+	"go.opentelemetry.io/otel"
 )
 
 func (r *postgresRepository) GetReadState(ctx context.Context, roomID, userID int64, authorize ReadStatePolicy) (*ReadState, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.GetReadState")
+	defer span.End()
 	state, _, err := r.readState(ctx, roomID, userID, 0, authorize)
 	return state, err
 }
 
 func (r *postgresRepository) AdvanceReadState(ctx context.Context, roomID, userID, messageID int64, authorize ReadStatePolicy) (*ReadState, bool, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.AdvanceReadState")
+	defer span.End()
 	if messageID <= 0 {
 		return nil, false, apperror.ErrInvalidRequest
 	}

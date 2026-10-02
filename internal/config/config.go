@@ -64,6 +64,15 @@ type Config struct {
 	WriteRateBurst     int
 	WSRatePerMinute    int
 	WSRateBurst        int
+
+	// Process telemetry and bounded shutdown.
+	OTELServiceName   string
+	OTLPEndpoint      string
+	OTLPHeaders       map[string]string
+	TraceSampleRatio  float64
+	MetricsEnabled    bool
+	MetricsListenAddr string
+	ShutdownTimeout   time.Duration
 }
 
 // Load reads optional env files in priority order, then populates Config.
@@ -159,6 +168,9 @@ func Load(envFiles ...string) (*Config, error) {
 	cfg.JWTRefreshTTL, err = parseDuration("JWT_REFRESH_TTL", "168h") // 7 days
 	if err != nil {
 		return nil, fmt.Errorf("config: invalid JWT_REFRESH_TTL: %w", err)
+	}
+	if err := cfg.loadTelemetry(); err != nil {
+		return nil, err
 	}
 
 	if err := cfg.validate(); err != nil {

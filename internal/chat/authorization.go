@@ -5,11 +5,14 @@ import (
 	"fmt"
 
 	"github.com/xuanphongtran/gogo-dl/pkg/apperror"
+	"go.opentelemetry.io/otel"
 )
 
 // AuthorizeRoom verifies that a user can access a room. It is intentionally
 // independent of Gin and can be called by the WebSocket authorization path.
 func (s *Service) AuthorizeRoom(ctx context.Context, userID, roomID int64) error {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.service.AuthorizeRoom")
+	defer span.End()
 	if _, err := s.repo.GetRoomByID(ctx, roomID); err != nil {
 		return err
 	}

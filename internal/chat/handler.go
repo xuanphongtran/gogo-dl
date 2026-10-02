@@ -225,6 +225,7 @@ func (h *Handler) ListMessages(c *gin.Context) {
 }
 
 // SendMessage persists a message and triggers a realtime broadcast via the hub.
+// @Description  Content must be nonblank and at most 4000 UTF-8 bytes after trimming whitespace.
 // @Summary      Send a message to a room
 // @Tags         messages
 // @Accept       json
@@ -233,11 +234,11 @@ func (h *Handler) ListMessages(c *gin.Context) {
 // @Param        id    path  int64              true  "Room ID"
 // @Param        body  body  SendMessageRequest true  "Message payload"
 // @Success      201  {object} Message
-// @Failure      400  {object} apperror.AppError
+// @Failure      400  {object} apperror.AppError "Invalid request, including content exceeding the message limit"
 // @Failure      401  {object} apperror.AppError
 // @Failure      403  {object} apperror.AppError
 // @Failure      404  {object} apperror.AppError
-// @Failure      413  {object} apperror.AppError
+// @Failure      413  {object} apperror.AppError "Entire HTTP request body exceeds HTTP_MAX_BODY_BYTES"
 // @Failure      500  {object} apperror.AppError
 // @Router       /api/v1/rooms/{id}/messages [post]
 func (h *Handler) SendMessage(c *gin.Context) {

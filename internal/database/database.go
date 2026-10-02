@@ -28,6 +28,13 @@ type DB struct {
 // Connect opens a connection pool to PostgreSQL and verifies connectivity.
 // dsn may be a PostgreSQL URL or a lib/pq key-value connection string.
 func Connect(dsn string) (*DB, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return ConnectContext(ctx, dsn)
+}
+
+// ConnectContext verifies startup connectivity within the caller's deadline.
+func ConnectContext(ctx context.Context, dsn string) (*DB, error) {
 	db, err := sqlx.Open("postgres", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("database: open: %w", err)
@@ -40,9 +47,8 @@ func Connect(dsn string) (*DB, error) {
 	db.SetConnMaxIdleTime(2 * time.Minute)
 
 	// Verify the DSN is reachable.
-	if err := db.Ping(); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("database: ping: %w", err)
+	if err := db.PingContext(ctx); err != nil {
+		return nil, errors.Join(fmt.Errorf("database: ping: %w", err), db.Close())
 	}
 
 	return &DB{db}, nil
@@ -75,16 +81,28 @@ func MigrateUpEmbedded(ctx context.Context, db *sql.DB) error {
 	if err != nil {
 		return errors.Join(fmt.Errorf("database: migration connection: %w", err), source.Close())
 	}
+	restoreSession, err := boundMigrationSession(ctx, conn)
+	if err != nil {
+		return errors.Join(err, conn.Close(), source.Close())
+	}
 	driver, err := postgres.WithConnection(ctx, conn, &postgres.Config{})
 	if err != nil {
-		return errors.Join(fmt.Errorf("database: migration driver: %w", err), conn.Close(), source.Close())
+		return errors.Join(fmt.Errorf("database: migration driver: %w", err), restoreSession(), conn.Close(), source.Close())
 	}
 	m, err := migrate.NewWithInstance("iofs", source, "postgres", driver)
 	if err != nil {
-		return errors.Join(fmt.Errorf("database: embedded migrator: %w", err), driver.Close(), source.Close())
+		return errors.Join(fmt.Errorf("database: embedded migrator: %w", err), restoreSession(), driver.Close(), source.Close())
 	}
+	stopGraceful := context.AfterFunc(ctx, func() {
+		select {
+		case m.GracefulStop <- true:
+		default:
+		}
+	})
 
 	runErr := m.Up()
+	stopGraceful()
+	resetErr := restoreSession()
 	sourceErr, databaseErr := m.Close()
 	if runErr != nil && runErr != migrate.ErrNoChange {
 		err = fmt.Errorf("database: embedded migrate up: %w", runErr)
@@ -95,6 +113,7 @@ func MigrateUpEmbedded(ctx context.Context, db *sql.DB) error {
 	if databaseErr != nil {
 		err = errors.Join(err, fmt.Errorf("database: close migration connection: %w", databaseErr))
 	}
+	err = errors.Join(err, resetErr, ctx.Err())
 	return err
 }
 
