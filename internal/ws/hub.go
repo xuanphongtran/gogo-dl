@@ -9,10 +9,12 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog/log"
+	"github.com/xuanphongtran/gogo-dl/internal/telemetry"
 )
 
 // Hub maintains the set of active clients and their room memberships.
@@ -39,6 +41,7 @@ type Options struct {
 	MaxMessageBytes       int64
 	MaxConnections        int
 	MaxConnectionsPerUser int
+	Metrics               *telemetry.Metrics
 }
 
 type admissionRequest struct {
@@ -86,12 +89,18 @@ type Hub struct {
 	authorizer RoomAuthorizer
 
 	// done is closed to signal Run() to exit (graceful shutdown).
-	done         chan struct{}
-	stopped      chan struct{}
-	shutdownOnce sync.Once
+	done           chan struct{}
+	stopped        chan struct{}
+	shutdownOnce   sync.Once
+	running        atomic.Bool
+	draining       atomic.Bool
+	lifecycleMu    sync.Mutex
+	pumps          sync.WaitGroup
+	upgrades       sync.WaitGroup
+	authorizations sync.WaitGroup
+	closedClients  []*Client // immutable after stopped closes
+	metrics        *telemetry.Metrics
 
-	// mu protects upgrader (gorilla upgrader is safe, but we wrap for future use).
-	mu                    sync.Mutex
 	upgrader              websocket.Upgrader
 	upgraderOrigins       []string
 	missingOriginAllowed  bool
@@ -124,6 +133,7 @@ func New(options ...Options) *Hub {
 		MaxConnectionsPerUser: 5,
 	}
 	if len(options) > 0 {
+		opts.Metrics = options[0].Metrics
 		if options[0].AllowedOrigins != nil {
 			opts.AllowedOrigins = options[0].AllowedOrigins
 		}
@@ -139,10 +149,11 @@ func New(options ...Options) *Hub {
 		}
 	}
 	return &Hub{
-		clients:               make(map[string]*Client),
-		rooms:                 make(map[string]map[string]*Client),
-		typing:                make(map[string]map[string]time.Time),
-		register:              make(chan *Client, 64),
+		clients: make(map[string]*Client),
+		rooms:   make(map[string]map[string]*Client),
+		typing:  make(map[string]map[string]time.Time),
+		// A handoff cannot be stranded in a buffered register queue at shutdown.
+		register:              make(chan *Client),
 		registered:            make(chan *Client, 64),
 		unregister:            make(chan *Client, 64),
 		inbound:               make(chan inboundMessage, 256),
@@ -161,10 +172,12 @@ func New(options ...Options) *Hub {
 		connectionsByUser:     make(map[int64]int),
 		upgraderOrigins:       opts.AllowedOrigins,
 		missingOriginAllowed:  opts.AllowMissingOrigin,
+		metrics:               opts.Metrics,
 		upgrader: websocket.Upgrader{
-			ReadBufferSize:  1024,
-			WriteBufferSize: 1024,
-			CheckOrigin:     func(r *http.Request) bool { return originAllowed(r, opts.AllowedOrigins, opts.AllowMissingOrigin) },
+			ReadBufferSize:   1024,
+			WriteBufferSize:  1024,
+			HandshakeTimeout: time.Second,
+			CheckOrigin:      func(r *http.Request) bool { return originAllowed(r, opts.AllowedOrigins, opts.AllowMissingOrigin) },
 		},
 	}
 }
@@ -174,6 +187,8 @@ func New(options ...Options) *Hub {
 // All state mutations (maps) are performed here — no locking required.
 func (h *Hub) Run() {
 	defer close(h.stopped)
+	h.running.Store(true)
+	defer h.running.Store(false)
 	ticker := time.NewTicker(typingSweepInterval)
 	defer ticker.Stop()
 	log.Info().Msg("ws: hub started")
@@ -258,11 +273,14 @@ func (h *Hub) Run() {
 
 		case now := <-ticker.C:
 			h.expireTyping(now)
+			h.observeQueues()
 
 		// ── Graceful shutdown ─────────────────────────────────────────────────
 		case <-h.done:
 			// Close all client send channels so WritePump goroutines exit.
 			for _, c := range h.clients {
+				h.closedClients = append(h.closedClients, c)
+				c.shutdownClose.Store(true)
 				c.cancel()
 				if c.authorization != nil {
 					c.authorization.cancel()
@@ -271,6 +289,7 @@ func (h *Hub) Run() {
 			}
 			h.connectionCount = 0
 			h.connectionsByUser = make(map[int64]int)
+			h.metrics.WSQueues(0, 0, 0, 0, 0)
 			log.Info().Msg("ws: hub stopped")
 			return
 		}
@@ -279,6 +298,7 @@ func (h *Hub) Run() {
 
 // Shutdown signals the hub event loop to stop. Safe to call from any goroutine.
 func (h *Hub) Shutdown() {
+	h.BeginDrain()
 	h.shutdownOnce.Do(func() { close(h.done) })
 }
 
@@ -286,26 +306,44 @@ func (h *Hub) Shutdown() {
 // This is the primary API for domain services (e.g. chat service) to push realtime events.
 // It is non-blocking: if the broadcast channel is full the message is dropped and an error is returned.
 func (h *Hub) Broadcast(roomID string, msg Message) error {
+	// Prefer stopped over an available queue with no consumer.
+	select {
+	case <-h.done:
+		h.metrics.WSDrop("room", "stopped")
+		return errHubStopped
+	default:
+	}
 	req := BroadcastRequest{RoomID: roomID, Message: msg}
 	select {
 	case <-h.done:
+		h.metrics.WSDrop("room", "stopped")
 		return errHubStopped
 	case h.broadcast <- req:
 		return nil
 	default:
+		h.metrics.WSDrop("room", "full")
 		return fmt.Errorf("ws: broadcast channel full, message dropped for room %s", roomID)
 	}
 }
 
 // BroadcastToUser sends a best-effort event to every active connection for one user.
 func (h *Hub) BroadcastToUser(userID int64, msg Message) error {
+	// Prefer stopped over an available queue with no consumer.
+	select {
+	case <-h.done:
+		h.metrics.WSDrop("user", "stopped")
+		return errHubStopped
+	default:
+	}
 	req := UserBroadcastRequest{UserID: userID, Message: msg}
 	select {
 	case <-h.done:
+		h.metrics.WSDrop("user", "stopped")
 		return errHubStopped
 	case h.userBroadcast <- req:
 		return nil
 	default:
+		h.metrics.WSDrop("user", "full")
 		return fmt.Errorf("ws: user broadcast channel full, event dropped for user %d", userID)
 	}
 }
@@ -313,6 +351,16 @@ func (h *Hub) BroadcastToUser(userID int64, msg Message) error {
 // Upgrade upgrades an HTTP connection to WebSocket, creates a Client, and
 // starts its read/write pumps. Auth (JWT) must be verified BEFORE calling this.
 func (h *Hub) Upgrade(w http.ResponseWriter, r *http.Request, clientID string, userID int64) error {
+	h.lifecycleMu.Lock()
+	if h.draining.Load() {
+		h.lifecycleMu.Unlock()
+		h.metrics.WSRejected("draining")
+		writeJSONError(w, http.StatusServiceUnavailable, "service unavailable")
+		return errHubStopped
+	}
+	h.upgrades.Add(1)
+	h.lifecycleMu.Unlock()
+	defer h.upgrades.Done()
 	if !originAllowed(r, h.allowedOrigins(), h.allowMissingOrigin()) {
 		writeJSONError(w, http.StatusForbidden, "origin forbidden")
 		return fmt.Errorf("ws: origin forbidden")
@@ -331,9 +379,9 @@ func (h *Hub) Upgrade(w http.ResponseWriter, r *http.Request, clientID string, u
 		return err
 	}
 
-	h.mu.Lock()
+	// The upgrader configuration is immutable. Serializing handshake I/O would
+	// let one stalled peer hold all accepted upgrades past the drain budget.
 	conn, err := h.upgrader.Upgrade(w, r, nil)
-	h.mu.Unlock()
 	if err != nil {
 		h.releaseConnection(context.WithoutCancel(r.Context()), userID)
 		return fmt.Errorf("ws: upgrade: %w", err)
@@ -341,6 +389,14 @@ func (h *Hub) Upgrade(w http.ResponseWriter, r *http.Request, clientID string, u
 
 	client := newClient(clientID, userID, conn, h, r.Context(), h.maxMessageBytes)
 	client.admitted = true
+	h.lifecycleMu.Lock()
+	defer h.lifecycleMu.Unlock()
+	if h.draining.Load() {
+		client.cancel()
+		_ = conn.Close()
+		h.releaseConnection(context.WithoutCancel(r.Context()), userID)
+		return errHubStopped
+	}
 	select {
 	case h.register <- client:
 	case <-h.done:
@@ -351,8 +407,9 @@ func (h *Hub) Upgrade(w http.ResponseWriter, r *http.Request, clientID string, u
 	}
 
 	// Each client needs exactly 2 goroutines: one reader, one writer.
-	go client.WritePump()
-	go client.ReadPump()
+	h.pumps.Add(2)
+	go func() { defer h.pumps.Done(); client.WritePump() }()
+	go func() { defer h.pumps.Done(); client.ReadPump() }()
 
 	return nil
 }
@@ -420,7 +477,12 @@ func (h *Hub) releaseConnection(ctx context.Context, userID int64) {
 }
 
 func (h *Hub) admitUser(userID int64) error {
+	if h.draining.Load() {
+		h.metrics.WSRejected("draining")
+		return errHubStopped
+	}
 	if h.connectionCount >= h.maxConnections || h.connectionsByUser[userID] >= h.maxConnectionsPerUser {
+		h.metrics.WSRejected("limit")
 		return errConnectionLimit
 	}
 	h.connectionCount++

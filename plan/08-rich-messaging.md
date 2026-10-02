@@ -1,31 +1,158 @@
-# 08 — Search, Attachments, and Notifications
+# 08 — Search, Attachments, and Notifications Execution Plan
 
-**Priority:** P2  
-**Status:** Proposed  
-**Depends on:** 05, 06, 07
+**Priority:** P2
 
-## Goal
+**Status:** Proposed — SPEC drafted; integration and provider gates pending
 
-Make conversations discoverable and useful when users are offline while preserving security and storage boundaries.
+**Specification:** [Phase 8 SPEC](../spec/08-rich-messaging.md)
 
-## Scope
+**Depends on:** 05 membership; [06 lifecycle integration](./06-message-lifecycle.md); 07 read state
 
-- Add room-scoped message search with membership enforcement.
-- Add attachment metadata and an object-storage upload workflow.
-- Add mentions and durable notification records.
-- Add notification preferences and a pluggable delivery interface.
-- Define retention, content-type, size, and malware-scanning policies.
+## 1. Acceptance and execution order
 
-## Acceptance criteria
+Implement **08A search → 08B attachments → 08C mentions/inbox** as reviewable
+slices. Store/scanner investigation can run alongside search. Cleanup's shared
+outbox is reused by notifications and Phase 9. Allocate actual migration versions
+against integrated history. Phase 6 app is now integrated from `develop`; schema alone is
+insufficient. Phase 5 verification remains Pending, a release gate for membership.
 
-- [ ] Search never returns content from unauthorized rooms.
-- [ ] Upload credentials are short-lived and scoped to one authorized operation.
-- [ ] Application servers do not proxy large files without an explicit reason.
-- [ ] Notification creation is idempotent and decoupled from request latency.
-- [ ] Deleted or inaccessible messages are handled consistently in search and notifications.
-- [ ] Storage limits, cleanup, and failure recovery are documented and tested.
+Defaults: PostgreSQL `simple` search, private versioned storage with separate
+fail-closed scan, durable in-app mention feed. Provider/cost/scanner capability,
+retention and measured quotas are readiness decisions. External email/push,
+file-content/global search and attachment-only sends are outside scope. This plan
+provisions nothing and claims no implementation completion.
 
-## Open decisions
+## 2. Inspect and establish contracts
 
-- PostgreSQL full-text search versus an external search service.
-- Supported object store and notification providers.
+- Read README, Makefile, git status, transport/service/repositories, Phase 6 branch,
+  Phase 7 contracts, migrations and relevant tests. Preserve user changes.
+- Trace membership transactions, lifecycle, account/room deletion, history DTOs
+  and broadcast wiring; list changes in each slice before editing.
+- Provider ADR: immutable versions, upload size/hash constraints, actual scan,
+  promotion, all-version deletion, signed headers, lifecycle, TLS/cost/ownership
+  and recovery. Prove overwrite resistance in isolated staging.
+- Confirm bounds, inbox retention and download bearer access window.
+- Define schema, lock order and independent consumer progress before workers.
+- Turn SPEC examples/error/authorization paths into behavioral tests.
+
+## 3. 08A — Room search
+
+Expected files: chat DTO/handler/service/repository, routes, new vector/index
+migration pair, tests, README and Swagger annotations/generated docs.
+
+- [ ] Define query limits and ID-desc response/cursor; use parameterized
+      `plainto_tsquery('simple', q)`, reject no-searchable-term queries.
+- [ ] Authorize current room membership transactionally; preserve public
+      403/private 404 concealment during removal races.
+- [ ] Add tombstone-filtered GIN vector/index, no historical migration edit.
+- [ ] Keep edit/delete index state consistent with integrated lifecycle.
+- [ ] Add handler/service auth/validation and PostgreSQL query/index tests.
+- [ ] Record common/selective plans/latency at realistic room sizes; test accented
+      Vietnamese, punctuation, tombstones and cursor changes during edits.
+- [ ] Update README/Swagger; existing history contract remains unchanged.
+
+Gate: no cross-room leak, correct lifecycle/index behavior, clean/upgrade migrations
+and measured query plans. External search needs evidence and a separate decision.
+
+## 4. 08B — Attachments and shared outbox
+
+Expected files: focused attachment service/repository/transport and actual store/
+scanner adapters; send/lifecycle/account cleanup wiring; new schema; worker startup/
+shutdown/config; tests/docs. Keep concrete manual composition and existing layers.
+
+- [ ] Add reservations/state CAS, quotas, upload retry keys, claims and cleanup
+      tombstones with constraints/FKs/indexes matching actual queries.
+- [ ] Establish immutable `domain_outbox`, independent purpose progress and room/
+      user counters; define transactional sequence allocation, lock order/fencing.
+- [ ] Scoped direct initiation/asynchronous completion; never trust object/type/
+      verdict fields or assume presigned credentials are one-use.
+- [ ] Pin exact quarantine bytes through verify/scan/promotion to immutable private
+      final identity. Unknown/outage scan state cannot become ready.
+- [ ] Separate logical reservation from physical-version budget; retain quota and
+      URL admission charges after cancel until expiry + grace, delete all versions
+      and reconcile late uploads independently of object state.
+- [ ] Authorized signed download with 60-second bearer limitation/safe headers;
+      DTOs/events/logs contain no provider keys or URLs.
+- [ ] Atomic send retry hash, owned ready room claim, message and intents;
+      same body/key returns existing authorized DTO, conflicting claims roll back.
+- [ ] Deletion/account/room cleanup intent precedes losing references; remove public
+      bindings, advance affected revisions/events and retain cleanup tombstones.
+- [ ] Bounded workers/deadlines, fenced claims/backoff, resource ownership and
+      stop-claim shutdown; no external I/O inside DB transaction/Hub loop.
+- [ ] Config validation/default-disabled admission, env/container/docs updates.
+
+Gate: real provider/scanner proof, mutable-version attack, type/size/hash rejection,
+claim/send/rollback races, quota/cancel/late-upload/version-GC, scan outage and
+promotion/DB failure recovery all pass. Fakes supplement actual capability tests.
+Provider selection unresolved means this slice stays Proposed.
+
+## 5. 08C — Mentions and private inbox
+
+Expected files: additive chat DTO/validation; notification repository/service/
+handlers/worker; preferences; routes/config/startup; shared outbox purpose; new
+migration pairs; private WS event/tests and API docs.
+
+- [ ] Backfill immutable `room_members.membership_generation` per insertion;
+      preserve role changes, reset rejoin, generation-scoped keys/cascades.
+- [ ] Snapshot bounded typed recipients/generations in send transaction; no username
+      parsing, no self notification, generic invalid-recipient errors.
+- [ ] Text edits preserve original mentions; deletion/removal clears bindings.
+- [ ] Add global/room preferences, owned cursor inbox/read endpoints, false booleans
+      and current generation/room authorization filtering.
+- [ ] Materialize default preference rows before locking; worker and preference
+      writes lock consistently. Uniquely insert effect and private intent together;
+      never resurrect old generation feed.
+- [ ] Independent cleanup/notification/future relay progress; prove crash/retry
+      cannot double-create rows or consume another purpose's work.
+- [ ] Best-effort user-only WS after commit, REST recovery, no copied deleted text;
+      leave removes old feed, room read cursor behavior remains unchanged.
+- [ ] Minimal real delivery interface/in-app adapter/test fake; external channels
+      need provider decisions and are not implemented speculatively.
+- [ ] Update README/Swagger; the AsyncAPI assets now integrated from `develop`;
+      document required content, optional send arrays and retry-key retention.
+
+Gate: membership/leave/rejoin/preference races, feed ownership, safe deleted
+references, duplicate processing, retry-key reuse/expiry and rollback pass.
+
+## 6. Test → review → fix
+
+Use typed fakes and barriers for service/HTTP/worker tests. Disposable PostgreSQL
+tests cover clean/upgrade migrations, lock order/deadlocks, removal authorization,
+competing claims, cascades and purpose leases. Provider staging contains no personal
+application data. Do not destroy shared databases/buckets for tests.
+
+Each slice: focused tests → gofmt → `go vet ./...` →
+`go test -race -count=1 ./...` → `make build`; lint when installed; regenerate and
+validate affected docs. Review full diff/`git diff --check`, redaction and dependency
+need. Findings get regression tests/fixes before commit; skipped gates stay pending.
+
+Review order: authorization/privacy → atomicity/immutability → cancellation/resource
+release → retry/recovery → compatibility → measured storage/query budgets. Test
+intent rollback, abandoned claims/lost replies, independent progress and bounded
+shutdown. Phase 9 adds broker and distributed load/failure gates.
+
+## 7. Rollout and handoff
+
+- Expand/backfill before writers; verify integrated 000006/000007 ancestry and
+  binary compatibility, then release 08A.
+- Upload admission stays off until capability proof; canary with small budgets.
+  Monitor pending age, rejection, orphan bytes, scan/cleanup backlog and cost.
+- Enable mention worker/inbox on one instance; check suppression/private delivery.
+  Provider latency never runs within the send transaction.
+- Define runbooks/thresholds for scan outages, retry exhaustion/dead letters, storage
+  cost, cleanup lag and consistent backup/restore.
+- Rollback stops new writers/admission and retains retrieval/cleanup/recovery until
+  drained. Keep schema/intents; no production down migration.
+- Commit reviewed slices after authorization for implementation/commit. Handoff
+  lists changed contracts, exact checks/results, migrations/config, provider limits
+  and remaining gates. Planning does not authorize provisioning.
+
+## 8. Completion checklist
+
+- [ ] SPEC/provider decisions and prerequisite integrations resolved.
+- [ ] 08A/08B/08C acceptance gates pass with recorded evidence.
+- [ ] Required race/vet/build and isolated DB/provider checks completed.
+- [ ] HTTP/WS docs/config/retention/runbooks synchronized.
+- [ ] Review findings fixed; scan/capacity/access-window limitations disclosed.
+
+All implementation and verification items remain pending in this docs task.

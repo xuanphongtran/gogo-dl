@@ -11,6 +11,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -18,11 +19,13 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"go.opentelemetry.io/otel"
 
 	"github.com/xuanphongtran/gogo-dl/internal/chat"
 	"github.com/xuanphongtran/gogo-dl/internal/config"
 	"github.com/xuanphongtran/gogo-dl/internal/database"
 	"github.com/xuanphongtran/gogo-dl/internal/httpserver"
+	"github.com/xuanphongtran/gogo-dl/internal/telemetry"
 	"github.com/xuanphongtran/gogo-dl/internal/user"
 	"github.com/xuanphongtran/gogo-dl/internal/ws"
 )
@@ -38,21 +41,30 @@ import (
 // @name        Authorization
 // @description Enter the access token as: Bearer {token}
 func main() {
+	log.Logger = zerolog.New(os.Stderr).With().Timestamp().Logger()
+	if err := run(); err != nil {
+		log.Error().Msg("server stopped after startup or listener failure")
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	// ── 1. Logging ────────────────────────────────────────────────────────────
-	// Pretty-print in development; JSON in production (zerolog detects automatically).
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339})
 
 	// ── 2. Config ─────────────────────────────────────────────────────────────
 	cfg, err := config.Load(".env.local", "configs/.env")
 	if err != nil {
-		log.Fatal().Err(err).Msg("failed to load config")
+		return fmt.Errorf("startup: config: %w", err)
 	}
 
 	if cfg.IsProd() {
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	} else {
+		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339})
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	}
+	signalCtx, stopSignals := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stopSignals()
 
 	log.Info().
 		Str("env", cfg.Env).
@@ -61,27 +73,82 @@ func main() {
 
 	// ── 3. Database ───────────────────────────────────────────────────────────
 	// The encoded URL also handles passwords containing URL-special characters.
-	db, err := database.Connect(cfg.MigrationURL())
+	connectCtx, cancelConnect := context.WithTimeout(signalCtx, 5*time.Second)
+	db, err := database.ConnectContext(connectCtx, cfg.MigrationURL())
+	cancelConnect()
 	if err != nil {
-		log.Fatal().Err(err).Msg("failed to connect to database")
+		return fmt.Errorf("startup: database: %w", err)
 	}
-	defer db.Close()
+	var hub *ws.Hub
+	var srv *httpserver.Server
+	var observability *telemetry.Runtime
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(signalCtx), cfg.ShutdownTimeout)
+		defer cancel()
+		if srv != nil {
+			srv.BeginDrain()
+		}
+		if hub != nil {
+			hub.BeginDrain()
+		}
+		results := make(chan error, 2)
+		pending := 0
+		if srv != nil {
+			pending++
+			go func() { results <- srv.Shutdown(ctx) }()
+		}
+		if hub != nil {
+			pending++
+			go func() { results <- hub.Drain(ctx) }()
+		}
+		for i := 0; i < pending; i++ {
+			if err := <-results; err != nil {
+				log.Warn().Msg("shutdown: request or socket drain reached its limit")
+			}
+		}
+		if observability != nil {
+			if err := observability.Shutdown(ctx); err != nil {
+				log.Warn().Msg("shutdown: telemetry flush incomplete")
+			}
+		}
+		if err := db.Close(); err != nil {
+			log.Warn().Msg("shutdown: database close failed")
+		}
+		log.Info().Msg("shutdown complete")
+	}()
 	log.Info().Msg("database connected")
 
 	// Run pending migrations on startup.
 	// Migration SQL is embedded in the binary, so startup is independent of the working directory.
-	if err := database.MigrateUpEmbedded(context.Background(), db.DB.DB); err != nil {
-		log.Fatal().Err(err).Msg("failed to run migrations")
+	migrationCtx, cancelMigration := context.WithTimeout(signalCtx, 30*time.Second)
+	err = database.MigrateUpEmbedded(migrationCtx, db.DB.DB)
+	cancelMigration()
+	if err != nil {
+		return fmt.Errorf("startup: migrations: %w", err)
 	}
 	log.Info().Msg("migrations up to date")
+	metrics := telemetry.NewMetrics(db.DB.DB)
+	observability, err = telemetry.New(signalCtx, telemetry.Options{ServiceName: cfg.OTELServiceName, Endpoint: cfg.OTLPEndpoint, Headers: cfg.OTLPHeaders, SampleRatio: cfg.TraceSampleRatio}, metrics)
+	if err != nil {
+		return fmt.Errorf("startup: telemetry: %w", err)
+	}
+	otel.SetTracerProvider(observability.Provider)
+	// SDK errors may contain provider response text or credentials: never log them.
+	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(error) { log.Warn().Msg("telemetry: export failed") }))
+	if cfg.MetricsEnabled {
+		if err := observability.StartMetrics(cfg.MetricsListenAddr); err != nil {
+			return err
+		}
+	}
 
 	// ── 4. WebSocket Hub ──────────────────────────────────────────────────────
-	hub := ws.New(ws.Options{
+	hub = ws.New(ws.Options{
 		AllowedOrigins:        cfg.WSAllowedOrigins,
 		AllowMissingOrigin:    cfg.WSAllowMissingOrigin,
 		MaxMessageBytes:       cfg.WSMaxMessageBytes,
 		MaxConnections:        cfg.WSMaxConnections,
 		MaxConnectionsPerUser: cfg.WSMaxConnectionsPerUser,
+		Metrics:               metrics,
 	})
 
 	// ── 5. Dependency wiring (manual DI, no framework) ───────────────────────
@@ -101,7 +168,7 @@ func main() {
 	chatHandler := chat.NewHandler(chatSvc, hub)
 
 	// ── 6. HTTP Server ────────────────────────────────────────────────────────
-	srv := httpserver.New(cfg, userHandler, chatHandler)
+	srv = httpserver.New(cfg, userHandler, chatHandler, httpserver.Options{Metrics: metrics, CheckDatabase: db.PingContext, RealtimeReady: hub.Ready})
 
 	// Start in a goroutine so we can listen for shutdown signals below.
 	serverErr := make(chan error, 1)
@@ -110,29 +177,13 @@ func main() {
 	}()
 
 	// ── 7. Graceful shutdown ──────────────────────────────────────────────────
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-
 	select {
 	case err := <-serverErr:
-		// Server exited on its own (unlikely unless port is taken).
-		log.Error().Err(err).Msg("server error")
-	case sig := <-quit:
-		log.Info().Str("signal", sig.String()).Msg("shutdown signal received")
+		if err != nil {
+			return fmt.Errorf("server: listen: %w", err)
+		}
+	case <-signalCtx.Done():
+		log.Info().Msg("shutdown signal received")
 	}
-
-	// Give in-flight requests 15 seconds to complete.
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	// Stop accepting new HTTP connections.
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Error().Err(err).Msg("http server shutdown error")
-	}
-
-	// Stop the WS hub (closes all client send channels, WritePumps exit cleanly).
-	hub.Shutdown()
-
-	// DB pool is closed by defer above.
-	log.Info().Msg("shutdown complete")
+	return nil
 }

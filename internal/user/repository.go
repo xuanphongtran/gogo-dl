@@ -9,6 +9,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
 	"github.com/xuanphongtran/gogo-dl/pkg/apperror"
+	"go.opentelemetry.io/otel"
 )
 
 // Repository defines data-access operations for the user domain.
@@ -35,6 +36,8 @@ func NewRepository(db *sqlx.DB) Repository {
 
 // Create inserts a new user row and fills u.ID and u.CreatedAt.
 func (r *postgresRepository) Create(ctx context.Context, u *User) error {
+	ctx, span := otel.Tracer("gogo-dl/user").Start(ctx, "user.repository.Create")
+	defer span.End()
 	query := `
 		INSERT INTO users (username, email, password_hash, avatar_url)
 		VALUES (:username, :email, :password_hash, :avatar_url)
@@ -64,6 +67,8 @@ func (r *postgresRepository) Create(ctx context.Context, u *User) error {
 
 // GetByID fetches a user by primary key.
 func (r *postgresRepository) GetByID(ctx context.Context, id int64) (*User, error) {
+	ctx, span := otel.Tracer("gogo-dl/user").Start(ctx, "user.repository.GetByID")
+	defer span.End()
 	var u User
 	err := r.db.GetContext(ctx, &u, `SELECT id, username, email, password_hash, avatar_url, created_at, updated_at FROM users WHERE id = $1`, id)
 	return handleGetErr(&u, err, "user repo GetByID")
@@ -71,6 +76,8 @@ func (r *postgresRepository) GetByID(ctx context.Context, id int64) (*User, erro
 
 // GetByEmail fetches a user by email address (used during login).
 func (r *postgresRepository) GetByEmail(ctx context.Context, email string) (*User, error) {
+	ctx, span := otel.Tracer("gogo-dl/user").Start(ctx, "user.repository.GetByEmail")
+	defer span.End()
 	var u User
 	err := r.db.GetContext(ctx, &u, `SELECT id, username, email, password_hash, avatar_url, created_at, updated_at FROM users WHERE lower(email) = lower($1)`, email)
 	return handleGetErr(&u, err, "user repo GetByEmail")
@@ -78,6 +85,8 @@ func (r *postgresRepository) GetByEmail(ctx context.Context, email string) (*Use
 
 // GetByUsername fetches a user by username.
 func (r *postgresRepository) GetByUsername(ctx context.Context, username string) (*User, error) {
+	ctx, span := otel.Tracer("gogo-dl/user").Start(ctx, "user.repository.GetByUsername")
+	defer span.End()
 	var u User
 	err := r.db.GetContext(ctx, &u, `SELECT id, username, email, password_hash, avatar_url, created_at, updated_at FROM users WHERE username = $1`, username)
 	return handleGetErr(&u, err, "user repo GetByUsername")
@@ -85,6 +94,8 @@ func (r *postgresRepository) GetByUsername(ctx context.Context, username string)
 
 // Update modifies username, avatar_url, and updated_at for an existing user.
 func (r *postgresRepository) Update(ctx context.Context, u *User) error {
+	ctx, span := otel.Tracer("gogo-dl/user").Start(ctx, "user.repository.Update")
+	defer span.End()
 	query := `
 		UPDATE users
 		SET username   = :username,
@@ -116,6 +127,8 @@ func (r *postgresRepository) Update(ctx context.Context, u *User) error {
 
 // Delete delegates to the transactional account deletion path.
 func (r *postgresRepository) Delete(ctx context.Context, id int64) error {
+	ctx, span := otel.Tracer("gogo-dl/user").Start(ctx, "user.repository.Delete")
+	defer span.End()
 	return r.DeleteAccount(ctx, id)
 }
 

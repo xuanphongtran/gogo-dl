@@ -2,7 +2,7 @@
 
 This directory breaks the next implementation work into ordered, reviewable feature plans for the real-time chat domain.
 
-Detailed implementation specifications for plans 01–07 are in [`spec/`](../spec/), with the combined P0 execution sequence in [`00-p0-foundation-execution.md`](./00-p0-foundation-execution.md).
+Detailed implementation specifications for plans 01–09 are in [`spec/`](../spec/), with the combined P0 execution sequence in [`00-p0-foundation-execution.md`](./00-p0-foundation-execution.md).
 
 ## Priority model
 
@@ -24,7 +24,7 @@ Within the same priority, lower sequence numbers should normally be completed fi
 | 06 | P1 | [Message lifecycle](./06-message-lifecycle.md) | Edit, delete, and consistent real-time message events | 03–05 | Done |
 | 07 | P1 | [Presence, typing, and read state](./07-presence-read-state.md) | Online state, typing indicators, and unread/read tracking | 03, 05 | Done |
 | 08 | P2 | [Search, attachments, and notifications](./08-rich-messaging.md) | Discoverable messages and richer asynchronous engagement | 05–07 | Proposed |
-| 09 | P2 | [Scale and observability](./09-scale-observability.md) | Multi-instance delivery, metrics, tracing, and SLOs | 01–08 | Proposed |
+| 09 | P2 | [Scale and observability](./09-scale-observability.md) | Multi-instance delivery, metrics, tracing, and SLOs | 01–08 | In progress |
 
 ## Verification record
 
@@ -40,6 +40,28 @@ The full race suite (including isolated PostgreSQL), vet, build and independent
 review/fixes are complete. Phase 06 application code is now included from develop,
 with both lifecycle and read-state repository contracts retained. The exact
 Phase 06 schema migration remains before version 7 during deployment.
+
+Phase 08 remains `Proposed` with detailed SPEC and PLAN. Phase 09 is `In progress`:
+09A is `Done` on `ft/phase-9a`; staging/provider and
+09B–09D distributed delivery, shared state and rollout gates remain pending.
+See its plan for exact checks and the local baseline.
+
+## Phase 08–09 execution boundaries
+
+| Slice | Can begin with | Release gate |
+|---|---|---|
+| 08A — Room search | Existing membership and the integrated Phase 06 lifecycle contract | Authorized, deletion-aware search and measured query plans |
+| 08B — Attachments | 08A schema sequence and verified object-store/scanner capabilities | Private immutable scanned objects, quotas, cleanup and retry tests |
+| 08C — Mentions and notifications | Message lifecycle, Phase 07 read state and shared outbox schema | Atomic intents, private durable feed and idempotent workers |
+| 09A — Observability and lifecycle | Existing HTTP/DB/Hub paths; can proceed before Phase 08 | Tested probes, bounded labels, drain behavior and baseline measurements |
+| 09B — Distributed durable delivery | Shared Phase 08 outbox and integrated durable event producers | Per-instance fan-out, recovery, sequencing and revocation tests |
+| 09C — Shared ephemeral state and limits | 09B and verified shared-store capabilities | Multi-node presence/typing, admission and rate-limit invariants |
+| 09D — Rollout | All Phase 09 slices verified in staging | Two-instance load/failure evidence, dashboards and rollback runbook |
+
+The individual plans define the exact slice scope and acceptance criteria.
+Migration versions are assigned against the merged history during implementation;
+new branches must include every prerequisite version. Planning does not reserve
+credentials, provision services or change the application's current runtime.
 
 ## Status values
 

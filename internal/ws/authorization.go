@@ -70,8 +70,10 @@ func (h *Hub) requestAuthorization(client *Client, roomNumber int64, roomID stri
 	generation := client.authorizationGeneration
 	ctx, cancel := context.WithTimeout(client.Context(), roomAuthorizationTimeout)
 	client.authorization = &pendingAuthorization{roomID: roomID, generation: generation, cancel: cancel}
+	h.authorizations.Add(1)
 
 	go func() {
+		defer h.authorizations.Done()
 		defer cancel()
 
 		err := h.authorizer.AuthorizeRoom(ctx, client.UserID, roomNumber)

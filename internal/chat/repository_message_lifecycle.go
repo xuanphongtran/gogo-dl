@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/xuanphongtran/gogo-dl/pkg/apperror"
+	"go.opentelemetry.io/otel"
 )
 
 // MessageMutationPolicy evaluates locked state without I/O. Missing membership
@@ -15,17 +16,23 @@ type MessageMutationPolicy func(RoomVisibility, *RoomMember, *Message) (bool, er
 
 // EditMessage commits a policy-approved edit under membership and message locks.
 func (r *postgresRepository) EditMessage(ctx context.Context, roomID, actorID, messageID int64, content string, policy MessageMutationPolicy) (*Message, bool, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.EditMessage")
+	defer span.End()
 	return r.mutateMessage(ctx, roomID, actorID, messageID, &content, policy)
 }
 
 // DeleteMessage commits a policy-approved tombstone with its deletion audit.
 func (r *postgresRepository) DeleteMessage(ctx context.Context, roomID, actorID, messageID int64, policy MessageMutationPolicy) (*Message, bool, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.DeleteMessage")
+	defer span.End()
 	return r.mutateMessage(ctx, roomID, actorID, messageID, nil, policy)
 }
 
 // Nil content selects deletion. The service owns permissions and retry rules;
 // this helper owns locks, database timestamps, audit metadata and the commit.
 func (r *postgresRepository) mutateMessage(ctx context.Context, roomID, actorID, messageID int64, content *string, policy MessageMutationPolicy) (*Message, bool, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.mutateMessage")
+	defer span.End()
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return nil, false, fmt.Errorf("chat repo mutateMessage begin: %w", err)

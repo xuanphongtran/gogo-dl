@@ -1686,6 +1686,75 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/livez": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system"
+                ],
+                "summary": "Check process liveness",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_httpserver.LivenessResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/readyz": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system"
+                ],
+                "summary": "Check HTTP readiness",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_httpserver.ReadinessResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/internal_httpserver.ReadinessResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/readyz/realtime": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system"
+                ],
+                "summary": "Check realtime admission readiness",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_httpserver.ReadinessResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/internal_httpserver.ReadinessResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -2069,6 +2138,22 @@ const docTemplate = `{
                 },
                 "time": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_httpserver.LivenessResponse": {
+            "type": "object",
+            "properties": {
+                "live": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "internal_httpserver.ReadinessResponse": {
+            "type": "object",
+            "properties": {
+                "ready": {
+                    "type": "boolean"
                 }
             }
         },

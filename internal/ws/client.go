@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -58,6 +59,9 @@ type Client struct {
 	cancel          context.CancelFunc
 	admitted        bool
 	maxMessageBytes int64
+	shutdownClose   atomic.Bool
+	writerFinished  atomic.Bool
+	drainOutcome    atomic.Uint32
 }
 
 // newClient creates a Client and registers it with the hub.
@@ -94,7 +98,11 @@ func (c *Client) ReadPump() {
 		case c.hub.unregister <- c:
 		case <-c.hub.done:
 		}
-		c.conn.Close()
+		// During drain the sole writer owns the close frame and transport close.
+		// A reader leaving a cancelled inbound enqueue must not preempt 1001.
+		if !c.shutdownClose.Load() {
+			_ = c.conn.Close()
+		}
 		if c.cancel != nil {
 			c.cancel()
 		}
@@ -113,6 +121,10 @@ func (c *Client) ReadPump() {
 	})
 
 	for {
+		if c.ctx.Err() != nil {
+			return
+		}
+
 		_, reader, err := c.conn.NextReader()
 		if err != nil {
 			if errors.Is(err, websocket.ErrReadLimit) {
@@ -122,7 +134,7 @@ func (c *Client) ReadPump() {
 				websocket.CloseGoingAway,
 				websocket.CloseAbnormalClosure,
 			) {
-				log.Error().Err(err).Str("client_id", c.ID).Msg("ws: unexpected close")
+				log.Warn().Str("client_id", c.ID).Msg("ws: unexpected transport close")
 			}
 			break
 		}
@@ -144,7 +156,7 @@ func (c *Client) ReadPump() {
 		decoder := json.NewDecoder(bytes.NewReader(rawBytes))
 		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(&msg); err != nil {
-			log.Warn().Err(err).Str("client_id", c.ID).Msg("ws: invalid message format")
+			log.Warn().Str("client_id", c.ID).Msg("ws: invalid message format")
 			c.enqueueInbound(inboundMessage{ClientID: c.ID, UserID: c.UserID, ErrorCode: "invalid_command"})
 			continue
 		}
@@ -195,6 +207,10 @@ func (c *Client) WritePump() {
 	ticker := time.NewTicker(pingPeriod)
 	var pendingClose chan struct{}
 	defer func() {
+		c.writerFinished.Store(true)
+		if c.shutdownClose.Load() && c.drainOutcome.CompareAndSwap(0, 3) {
+			c.hub.metrics.WSDrain("error")
+		}
 		ticker.Stop()
 		if pendingClose != nil {
 			close(pendingClose)
@@ -210,7 +226,7 @@ func (c *Client) WritePump() {
 			}
 			if !ok {
 				// Hub closed the channel — send a close message.
-				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				c.writeClose()
 				return
 			}
 
@@ -219,7 +235,7 @@ func (c *Client) WritePump() {
 				if err := c.conn.WriteMessage(websocket.TextMessage, outbound.data); err != nil {
 					return
 				}
-				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				c.writeClose()
 				close(pendingClose)
 				pendingClose = nil
 				return
@@ -236,11 +252,12 @@ func (c *Client) WritePump() {
 
 			// Drain any queued messages into the same WebSocket frame batch.
 			n := len(c.send)
+			channelClosed := false
 			for i := 0; i < n; i++ {
 				next, ok := <-c.send
 				if !ok {
-					_ = w.Close()
-					return
+					channelClosed = true
+					break
 				}
 				if next.closeAfter {
 					pendingClose = next.closed
@@ -261,8 +278,12 @@ func (c *Client) WritePump() {
 			if err := w.Close(); err != nil {
 				return
 			}
+			if channelClosed {
+				c.writeClose()
+				return
+			}
 			if pendingClose != nil {
-				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				c.writeClose()
 				close(pendingClose)
 				pendingClose = nil
 				return
@@ -284,6 +305,7 @@ func (c *Client) WritePump() {
 func (c *Client) sendJSON(msg Message) bool {
 	data, err := json.Marshal(msg)
 	if err != nil {
+		c.hub.metrics.WSDrop("client", "marshal")
 		log.Error().Err(err).Msg("ws: marshal error")
 		return false
 	}
@@ -292,6 +314,7 @@ func (c *Client) sendJSON(msg Message) bool {
 		return true
 	default:
 		// Client is too slow or disconnected — drop the message.
+		c.hub.metrics.WSDrop("client", "full")
 		log.Warn().Str("client_id", c.ID).Msg("ws: send buffer full, dropping message")
 		return false
 	}
@@ -307,7 +330,18 @@ func (c *Client) sendJSONAndClose(msg Message, closed chan struct{}) {
 	select {
 	case c.send <- outboundMessage{data: data, closeAfter: true, closed: closed}:
 	default:
+		c.hub.metrics.WSDrop("client", "full")
 		log.Warn().Str("client_id", c.ID).Msg("ws: send buffer full, dropping protocol error")
 		close(closed)
+	}
+}
+
+func (c *Client) writeClose() {
+	code := websocket.CloseNormalClosure
+	if c.shutdownClose.Load() {
+		code = websocket.CloseGoingAway
+	}
+	if err := c.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(code, "")); err == nil && c.shutdownClose.Load() && c.drainOutcome.CompareAndSwap(0, 1) {
+		c.hub.metrics.WSDrain("completed")
 	}
 }

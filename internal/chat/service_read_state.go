@@ -9,6 +9,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/xuanphongtran/gogo-dl/internal/ws"
 	"github.com/xuanphongtran/gogo-dl/pkg/apperror"
+	"go.opentelemetry.io/otel"
 )
 
 // ReadStatePolicy checks room access using authoritative locked membership.
@@ -27,6 +28,8 @@ func requireReadStateMember(visibility RoomVisibility, member *RoomMember) error
 
 // GetReadState returns the caller's durable cursor without advancing it.
 func (s *Service) GetReadState(ctx context.Context, userID, roomID int64) (*ReadState, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.service.GetReadState")
+	defer span.End()
 	if userID <= 0 || roomID <= 0 {
 		return nil, apperror.ErrInvalidRequest
 	}
@@ -40,6 +43,8 @@ func (s *Service) GetReadState(ctx context.Context, userID, roomID int64) (*Read
 // AdvanceReadState acknowledges a room message and notifies only this user
 // after a changed cursor commits. Older valid acknowledgements are no-ops.
 func (s *Service) AdvanceReadState(ctx context.Context, userID, roomID int64, req *AdvanceReadStateRequest) (*ReadState, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.service.AdvanceReadState")
+	defer span.End()
 	if userID <= 0 || roomID <= 0 || req == nil || req.LastReadMessageID <= 0 {
 		return nil, apperror.ErrInvalidRequest
 	}
@@ -59,6 +64,8 @@ func (s *Service) AdvanceReadState(ctx context.Context, userID, roomID int64, re
 
 // GetPresence returns process-local room presence to current room members.
 func (s *Service) GetPresence(ctx context.Context, userID, roomID int64) (*ws.PresenceSnapshot, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.service.GetPresence")
+	defer span.End()
 	if userID <= 0 || roomID <= 0 {
 		return nil, apperror.ErrInvalidRequest
 	}

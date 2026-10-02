@@ -8,6 +8,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/xuanphongtran/gogo-dl/pkg/apperror"
+	"go.opentelemetry.io/otel"
 )
 
 // explicitRepository overrides the read paths that need stable projections
@@ -18,6 +19,8 @@ type explicitRepository struct {
 }
 
 func (r *explicitRepository) GetRoomByID(ctx context.Context, id int64) (*Room, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.GetRoomByID")
+	defer span.End()
 	var room Room
 	err := r.db.GetContext(ctx, &room,
 		`SELECT id, name, created_by, created_at, visibility FROM rooms WHERE id = $1`, id,
@@ -32,6 +35,8 @@ func (r *explicitRepository) GetRoomByID(ctx context.Context, id int64) (*Room, 
 }
 
 func (r *explicitRepository) ListRooms(ctx context.Context) ([]*Room, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.ListRooms")
+	defer span.End()
 	var rooms []*Room
 	if err := r.db.SelectContext(ctx, &rooms,
 		`SELECT id, name, created_by, created_at, visibility FROM rooms ORDER BY created_at DESC`,
@@ -42,6 +47,8 @@ func (r *explicitRepository) ListRooms(ctx context.Context) ([]*Room, error) {
 }
 
 func (r *explicitRepository) ListMessages(ctx context.Context, roomID int64, limit int, beforeID int64) ([]*Message, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.ListMessages")
+	defer span.End()
 	if limit <= 0 {
 		limit = 50
 	}

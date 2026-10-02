@@ -1,0 +1,37 @@
+groups:
+  - name: gogo-dl
+    rules:
+      - alert: GogoTargetDown
+        expr: up{job="gogo-dl"} == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations: {summary: "Gogo metrics target is unreachable; check process and private scrape access"}
+      - alert: GogoHTTPErrorBudgetBurn
+        expr: sum(rate(gogo_http_availability_total{result="bad"}[5m])) / clamp_min(sum(rate(gogo_http_availability_total[5m])), 0.001) > 0.001 and sum(rate(gogo_http_availability_total[5m])) > 1
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "Authenticated HTTP failures exceed the proposed 0.1% budget"}
+      - alert: GogoHTTPP95High
+        expr: histogram_quantile(0.95, sum by (le, route) (rate(gogo_http_request_duration_seconds_bucket{status_class="2xx",route=~"/api/v1/.*",route!="/api/v1/ws"}[5m]))) > 0.3
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: "Successful API route p95 exceeds proposed 300 ms"}
+      - alert: GogoDBPoolSaturated
+        expr: gogo_db_in_use_connections / gogo_db_max_open_connections > 0.8
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: "DB pool exceeds 80%; inspect waits and slow queries"}
+      - alert: GogoRealtimeDrops
+        expr: sum(rate(gogo_ws_dropped_total[5m])) > 0
+        for: 1m
+        labels: {severity: warning}
+        annotations: {summary: "Best-effort realtime events are being dropped; recover history over HTTP"}
+      - alert: GogoTraceExportFailure
+        expr: increase(gogo_trace_export_errors_total[5m]) > 0
+        for: 1m
+        labels: {severity: warning}
+        annotations: {summary: "Trace export is failing; inspect collector connectivity and secret configuration"}
+      - alert: GogoForcedSocketDrain
+        expr: sum(increase(gogo_ws_drain_total{result="forced"}[5m])) > 0
+        labels: {severity: warning}
+        annotations: {summary: "Shutdown forced sockets closed; check slow clients and platform grace"}

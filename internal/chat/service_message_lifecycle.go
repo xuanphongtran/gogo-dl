@@ -7,11 +7,14 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/xuanphongtran/gogo-dl/internal/ws"
 	"github.com/xuanphongtran/gogo-dl/pkg/apperror"
+	"go.opentelemetry.io/otel"
 )
 
 // EditMessage changes an author's text using the expected revision and locked
 // membership. A retry of the latest identical edit is a successful no-op.
 func (s *Service) EditMessage(ctx context.Context, actorID, roomID, messageID int64, req *EditMessageRequest) (*Message, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.service.EditMessage")
+	defer span.End()
 	if actorID <= 0 || roomID <= 0 || messageID <= 0 || req == nil || req.Revision <= 0 {
 		return nil, apperror.ErrInvalidRequest
 	}
@@ -50,6 +53,8 @@ func (s *Service) EditMessage(ctx context.Context, actorID, roomID, messageID in
 // DeleteMessage erases content while retaining a tombstone for stable history.
 // Current authors, owners and moderators can delete, including on retries.
 func (s *Service) DeleteMessage(ctx context.Context, actorID, roomID, messageID int64) (*Message, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.service.DeleteMessage")
+	defer span.End()
 	if actorID <= 0 || roomID <= 0 || messageID <= 0 {
 		return nil, apperror.ErrInvalidRequest
 	}

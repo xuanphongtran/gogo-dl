@@ -5,14 +5,15 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Logger returns a Gin middleware that logs each request with zerolog.
-// Fields: method, path, status, latency, request_id, remote_addr, user_agent.
+// Fields use route templates and validated correlation IDs, never raw paths,
+// peer-provided user agents, query strings or authorization data.
 func Logger() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
-		path := c.Request.URL.Path
 
 		c.Next()
 
@@ -26,14 +27,16 @@ func Logger() gin.HandlerFunc {
 			event = log.Warn()
 		}
 
+		spanContext := trace.SpanContextFromContext(c.Request.Context())
+		if spanContext.IsValid() {
+			event = event.Str("trace_id", spanContext.TraceID().String())
+		}
 		event.
-			Str("method", c.Request.Method).
-			Str("path", path).
+			Str("method", safeMethod(c.Request.Method)).
+			Str("route", safeRoute(c)).
 			Int("status", status).
 			Dur("latency", latency).
 			Str("request_id", requestIDString(c)).
-			Str("remote_addr", c.Request.RemoteAddr).
-			Str("user_agent", c.Request.UserAgent()).
 			Msg("http")
 	}
 }

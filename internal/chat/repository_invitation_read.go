@@ -7,9 +7,12 @@ import (
 	"fmt"
 
 	"github.com/xuanphongtran/gogo-dl/pkg/apperror"
+	"go.opentelemetry.io/otel"
 )
 
 func (r *postgresRepository) GetInvitation(ctx context.Context, invitationID, inviteeID int64) (*Invitation, error) {
+	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.GetInvitation")
+	defer span.End()
 	var invitation Invitation
 	err := r.db.GetContext(ctx, &invitation, `
 		SELECT i.id, i.room_id, r.name AS room_name, i.invitee_id, i.invited_by,

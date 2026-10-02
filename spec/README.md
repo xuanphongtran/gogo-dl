@@ -1,6 +1,6 @@
 # Implementation Specifications
 
-This directory contains the detailed specifications for phases 01–07. The documents define behavior, boundaries, decisions, and verification
+This directory contains the detailed specifications for phases 01–09. The documents define behavior, boundaries, decisions, and verification
 requirements and verification decisions.
 
 ## Specifications
@@ -12,6 +12,8 @@ requirements and verification decisions.
 - [05 — Room Membership and Roles](./05-room-membership-roles.md)
 - [06 — Message Lifecycle](./06-message-lifecycle.md)
 - [07 — Presence, Typing, and Read State](./07-presence-read-state.md)
+- [08 — Search, Attachments, and Notifications](./08-rich-messaging.md)
+- [09 — Scale and Observability](./09-scale-observability.md)
 
 The related execution plans remain in [`plan/`](../plan/).
 
@@ -22,6 +24,11 @@ and role contract.
 Phase 07 was implemented and verified from main; Phase 06 application code
 is now included from develop. Its schema includes migration 000006 before 000007 to preserve
 deployment order; testing and review/fix results are recorded in its plan.
+
+Phase 08 remains a proposed design. Phase 09 is in progress: slice 09A is
+Done on `ft/phase-9a` after implementation and local verification. The remaining 09B–09D target
+contracts, provider access and capacity gates describe future behavior and must
+be verified before release.
 
 ## Shared constraints
 

@@ -256,6 +256,16 @@ definitions:
       time:
         type: string
     type: object
+  internal_httpserver.LivenessResponse:
+    properties:
+      live:
+        type: boolean
+    type: object
+  internal_httpserver.ReadinessResponse:
+    properties:
+      ready:
+        type: boolean
+    type: object
   internal_user.LoginRequest:
     properties:
       email:
@@ -1388,6 +1398,50 @@ paths:
           schema:
             $ref: '#/definitions/internal_httpserver.HealthResponse'
       summary: Check server health
+      tags:
+      - system
+  /livez:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_httpserver.LivenessResponse'
+      summary: Check process liveness
+      tags:
+      - system
+  /readyz:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_httpserver.ReadinessResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/internal_httpserver.ReadinessResponse'
+      summary: Check HTTP readiness
+      tags:
+      - system
+  /readyz/realtime:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_httpserver.ReadinessResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/internal_httpserver.ReadinessResponse'
+      summary: Check realtime admission readiness
       tags:
       - system
 schemes:

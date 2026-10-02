@@ -385,3 +385,26 @@ Clients should proactively refresh before the access token expires (`expires_at`
 - If an account is deleted, authored message history is retained with a nullable `user_id` and the username `[deleted user]`.
 - WebSocket upgrades require an exact configured Origin and are subject to global/per-user connection admission and per-connection frame limits.
 - Invalid JSON/request semantics return stable `invalid request` errors; oversized HTTP bodies return `request body too large`, and exhausted limiters return `rate limit exceeded` with `Retry-After`.
+
+## Observability and shutdown
+
+Phase 9A adds `/livez`, `/readyz` and `/readyz/realtime`; `/health` keeps its
+existing response. Readiness checks PostgreSQL with a 250 ms deadline/cache and
+withdraws immediately during drain. Realtime readiness also requires Hub admission.
+
+Prometheus metrics use a separate private listener and are disabled by default.
+Set `METRICS_ENABLED=true` and `METRICS_LISTEN_ADDR=127.0.0.1:9090` for a local
+collector. The public API has no `/metrics` route. OTLP tracing is enabled only
+with a full `OTEL_EXPORTER_OTLP_ENDPOINT` URL; credentials belong in
+`OTEL_EXPORTER_OTLP_HEADERS` secrets. `OTEL_SERVICE_NAME` defaults to `gogo-dl`,
+`TRACE_SAMPLE_RATIO` to `0.05`, and `SHUTDOWN_TIMEOUT` to `15s`.
+
+Production logs are JSON with request/trace correlation and route templates.
+On SIGTERM the server rejects new API/WS requests, withdraws readiness and drains
+HTTP, sockets and telemetry within one shared budget. Registered sockets receive
+close code 1001; slow writers are forcibly closed at the deadline. Docker Compose
+allows 20 seconds for the default drain. Keep the platform grace longer than any
+configured `SHUTDOWN_TIMEOUT`.
+
+See [the operations guide](docs/observability.md) for metrics, dashboards, alerts,
+SLO definitions, deployment checks and local verification evidence.
