@@ -1022,6 +1022,94 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/rooms/{id}/messages/search": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Plain-text AND search using PostgreSQL simple configuration. Excludes deleted messages; ordered by descending ID. Restart pagination when changing q. No stemming or accent folding guarantee.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "messages"
+                ],
+                "summary": "Search room messages",
+                "parameters": [
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "Room ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Trimmed searchable UTF-8 text, 1–256 bytes",
+                        "name": "q",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "maximum": 100,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Page size",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "Exclusive message ID cursor",
+                        "name": "before",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_chat.SearchMessagesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/rooms/{id}/messages/{message_id}": {
             "delete": {
                 "security": [
@@ -2110,6 +2198,21 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/internal_chat.Room"
                     }
+                }
+            }
+        },
+        "internal_chat.SearchMessagesResponse": {
+            "type": "object",
+            "properties": {
+                "messages": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_chat.Message"
+                    }
+                },
+                "next_before": {
+                    "type": "integer",
+                    "x-nullable": true
                 }
             }
         },

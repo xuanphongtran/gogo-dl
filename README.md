@@ -143,6 +143,7 @@ Profile updates accept an avatar URL only when it is an absolute `http://` or
 | PATCH | `/api/v1/rooms/:id/members/:user_id` | ✓ | Change member role |
 | POST | `/api/v1/rooms/:id/ownership` | ✓ | Transfer room ownership |
 | GET    | `/api/v1/rooms/:id/messages`    | ✓    | List messages (cursor pagination)|
+| GET    | `/api/v1/rooms/:id/messages/search` | ✓ | Search live room messages (ID cursor) |
 | POST   | `/api/v1/rooms/:id/messages`    | ✓    | Send a message (+ WS broadcast)  |
 | PATCH | `/api/v1/rooms/:id/messages/:message_id` | ✓ | Edit my message using its revision |
 | DELETE | `/api/v1/rooms/:id/messages/:message_id` | ✓ | Delete a message and return its tombstone |
@@ -201,6 +202,37 @@ Internal deletion audit retains actor and time; deleting that actor's account
 sets the audit reference to null. See the [Phase 6 specification](spec/06-message-lifecycle.md)
 for concurrency, retry and retention details. Migration `000006` is embedded and
 applies automatically before the updated server accepts requests.
+
+### Room message search
+
+`GET /api/v1/rooms/:id/messages/search?q=chào%20bạn&limit=20&before=123`
+requires authentication and current membership. Public nonmembers receive `403`;
+private nonmembers and missing rooms receive `404`. Authorization holds room and
+membership locks until the search transaction completes.
+
+The trimmed query must be valid UTF-8, 1–256 bytes, and contain searchable terms.
+Empty/punctuation-only queries, invalid bounds, and invalid encoding return `400`.
+`limit` defaults to 20 (1–100); `before` is an optional positive, exclusive message
+ID cursor. Results use descending message IDs, without relevance ranking:
+
+```json
+{"messages":[],"next_before":null}
+```
+
+When another matching page exists, `next_before` is the last returned ID.
+All query terms must match; punctuation does not enable operators or prefix search.
+The PostgreSQL `simple` configuration does not promise stemming or accent folding:
+`chào` matches `xin chào bạn`, while `chao` is a different term. See
+[PostgreSQL's plain-text query parsing](https://www.postgresql.org/docs/16/textsearch-controls.html).
+Search returns current message fields, excludes tombstones, and updates atomically
+with edits/deletions. Pagination is not a snapshot; edits can change later pages.
+Restart from the first page when changing `q`. Existing history behavior is unchanged.
+
+Embedded migration `000008` backfills a generated search vector and adds a partial
+GIN index. It rewrites existing messages and acquires a table lock; measure it on
+representative staging data before rollout. The startup migration statement budget
+is 5 seconds; larger databases need a reviewed migration procedure. Local query
+plans and timings are recorded in [the Phase 8A report](docs/phase-8a-search.md).
 
 ### Presence and personal read state
 
@@ -366,6 +398,11 @@ Phase 6 integration tests additionally cover upgrade from schema 000005,
 lifecycle constraints, tombstone pagination/audit, write rollback, concurrent
 edits/deletes, and membership locking. They require a disposable database whose
 name ends in `_test` and reset its data/schema during cleanup.
+
+Phase 8A tests cover clean schema/upgrade from 7, vector backfill and rollback,
+room privacy, UTF-8/plain-text search, ID cursors, edit/delete index consistency,
+membership-removal locking, and query plans on 100,000 messages in two rooms.
+They reuse the fresh disposable database fixture and never load local env files.
 
 ## Architecture notes
 

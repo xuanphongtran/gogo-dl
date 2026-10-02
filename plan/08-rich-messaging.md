@@ -2,7 +2,7 @@
 
 **Priority:** P2
 
-**Status:** Proposed — SPEC drafted; integration and provider gates pending
+**Status:** In progress — 08A Done locally; 08B–08C and staging/provider gates pending
 
 **Specification:** [Phase 8 SPEC](../spec/08-rich-messaging.md)
 
@@ -20,7 +20,7 @@ Defaults: PostgreSQL `simple` search, private versioned storage with separate
 fail-closed scan, durable in-app mention feed. Provider/cost/scanner capability,
 retention and measured quotas are readiness decisions. External email/push,
 file-content/global search and attachment-only sends are outside scope. This plan
-provisions nothing and claims no implementation completion.
+provisions nothing. 08A is implemented and locally verified; 08B–08C remain proposed.
 
 ## 2. Inspect and establish contracts
 
@@ -40,19 +40,43 @@ provisions nothing and claims no implementation completion.
 Expected files: chat DTO/handler/service/repository, routes, new vector/index
 migration pair, tests, README and Swagger annotations/generated docs.
 
-- [ ] Define query limits and ID-desc response/cursor; use parameterized
+- [x] Define query limits and ID-desc response/cursor; use parameterized
       `plainto_tsquery('simple', q)`, reject no-searchable-term queries.
-- [ ] Authorize current room membership transactionally; preserve public
+- [x] Authorize current room membership transactionally; preserve public
       403/private 404 concealment during removal races.
-- [ ] Add tombstone-filtered GIN vector/index, no historical migration edit.
-- [ ] Keep edit/delete index state consistent with integrated lifecycle.
-- [ ] Add handler/service auth/validation and PostgreSQL query/index tests.
-- [ ] Record common/selective plans/latency at realistic room sizes; test accented
+- [x] Add tombstone-filtered GIN vector/index, no historical migration edit.
+- [x] Keep edit/delete index state consistent with integrated lifecycle.
+- [x] Add handler/service auth/validation and PostgreSQL query/index tests.
+- [x] Record common/selective plans/latency at realistic room sizes; test accented
       Vietnamese, punctuation, tombstones and cursor changes during edits.
-- [ ] Update README/Swagger; existing history contract remains unchanged.
+- [x] Update README/Swagger; existing history contract remains unchanged.
 
 Gate: no cross-room leak, correct lifecycle/index behavior, clean/upgrade migrations
 and measured query plans. External search needs evidence and a separate decision.
+
+### 08A completion record — 2026-10-02
+
+Implemented on `ft/phase-8a`: authenticated room-scoped search, service validation
+and privacy policy, repository transaction locks, generated vector/partial GIN
+migration `000008`, ID lookahead pagination, README and generated Swagger.
+No new Go dependencies or WebSocket events. Phase 05 retains its independent
+pending verification gate; this does not declare membership release complete.
+
+Verification on Go 1.23.12 and disposable PostgreSQL 16.15:
+
+- Focused search service/HTTP/repository tests: passed.
+- PostgreSQL clean/7→8 upgrade, 8 down/reapply, edit/delete, Unicode/punctuation,
+  privacy/cursor and both membership-removal orderings: passed under `-race`.
+- `go test -race -p 2 -count=1 ./...` with the owned `TEST_DATABASE_URL`: passed.
+- `go vet -p 2 ./...`, `make build`, `make docs`, gofmt and
+  `git diff --check`: passed.
+- `golangci-lint` unavailable; no lint result claimed.
+
+The [measurement report](../docs/phase-8a-search.md) records 100k-row migration
+and selective/common plans. Production/Neon migration timing is unverified;
+stage representative data before rollout because startup statements have a 5 s
+budget and the vector backfill rewrites/locks the table. No push or external
+deployment was performed for this slice.
 
 ## 4. 08B — Attachments and shared outbox
 

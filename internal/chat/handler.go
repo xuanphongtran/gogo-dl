@@ -60,6 +60,7 @@ func (h *Handler) RegisterRoutes(private *gin.RouterGroup, wsMiddleware ...gin.H
 		rooms.GET("/:id", h.GetRoom)
 		rooms.POST("/:id/join", h.JoinRoom)
 		rooms.GET("/:id/messages", h.ListMessages)
+		rooms.GET("/:id/messages/search", h.SearchMessages)
 		rooms.POST("/:id/messages", h.SendMessage)
 		rooms.PATCH("/:id/messages/:message_id", h.EditMessage)
 		rooms.DELETE("/:id/messages/:message_id", h.DeleteMessage)
