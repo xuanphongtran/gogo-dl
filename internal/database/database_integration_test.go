@@ -96,6 +96,8 @@ func TestEmbeddedMigrationsConcurrentStart(t *testing.T) {
 	}
 	if version != 6 || dirty {
 		t.Fatalf("migration state = version %d, dirty %t; want version 6 and clean", version, dirty)
+	if version != 7 || dirty {
+		t.Fatalf("migration state = version %d, dirty %t; want version 7 and clean", version, dirty)
 	}
 }
 

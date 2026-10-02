@@ -10,10 +10,31 @@ definitions:
       refresh_token:
         type: string
     type: object
+  github_com_xuanphongtran_gogo-dl_internal_ws.PresenceSnapshot:
+    properties:
+      online_user_ids:
+        items:
+          type: integer
+        type: array
+      room_id:
+        type: string
+      typing_user_ids:
+        items:
+          type: integer
+        type: array
+    type: object
   github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError:
     properties:
       error:
         type: string
+    type: object
+  internal_chat.AdvanceReadStateRequest:
+    properties:
+      last_read_message_id:
+        minimum: 1
+        type: integer
+    required:
+    - last_read_message_id
     type: object
   internal_chat.ChangeMemberRoleRequest:
     properties:
@@ -146,6 +167,17 @@ definitions:
         items:
           $ref: '#/definitions/internal_chat.Message'
         type: array
+    type: object
+  internal_chat.ReadState:
+    properties:
+      last_read_message_id:
+        minimum: 0
+        type: integer
+      room_id:
+        type: integer
+      unread_count:
+        minimum: 0
+        type: integer
     type: object
   internal_chat.Room:
     properties:
@@ -1083,6 +1115,140 @@ paths:
       summary: Transfer room ownership
       tags:
       - memberships
+  /api/v1/rooms/{id}/presence:
+    get:
+      parameters:
+      - description: Room ID
+        in: path
+        minimum: 1
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_internal_ws.PresenceSnapshot'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+      security:
+      - BearerAuth: []
+      summary: Get room presence
+      tags:
+      - presence
+  /api/v1/rooms/{id}/read-state:
+    get:
+      parameters:
+      - description: Room ID
+        in: path
+        minimum: 1
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_chat.ReadState'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+      security:
+      - BearerAuth: []
+      summary: Get personal room read state
+      tags:
+      - read-state
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Room ID
+        in: path
+        minimum: 1
+        name: id
+        required: true
+        type: integer
+      - description: Read acknowledgement
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_chat.AdvanceReadStateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_chat.ReadState'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+      security:
+      - BearerAuth: []
+      summary: Advance personal room read state
+      tags:
+      - read-state
   /api/v1/users/me:
     delete:
       responses:

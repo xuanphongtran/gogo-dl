@@ -39,6 +39,11 @@ type Client struct {
 	// Key: roomID. Value: struct{} (set semantics).
 	rooms map[string]struct{}
 
+	// Authorization and typing timing are owned exclusively by the Hub loop.
+	authorizationGeneration uint64
+	authorization           *pendingAuthorization
+	lastTypingStart         time.Time
+
 	// The underlying WebSocket connection.
 	conn *websocket.Conn
 

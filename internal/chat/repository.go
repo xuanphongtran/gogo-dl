@@ -23,6 +23,9 @@ type Repository interface {
 	// Member operations
 	AddMember(ctx context.Context, roomID, userID int64) error
 	RemoveMember(ctx context.Context, roomID, userID int64) error
+	// RemoveMemberWithAuthorization locks current memberships, calls the service
+	// policy with nil for missing members, and deletes only if it authorizes.
+	RemoveMemberWithAuthorization(ctx context.Context, roomID, actorID, userID int64, authorize func(actor, target *RoomMember) error) (*RoomMember, error)
 	IsMember(ctx context.Context, roomID, userID int64) (bool, error)
 	JoinPublicRoom(ctx context.Context, roomID, userID int64) (bool, error)
 	GetMember(ctx context.Context, roomID, userID int64) (*RoomMember, error)

@@ -23,6 +23,33 @@ func NewHandler(svc *Service, hub *ws.Hub) *Handler {
 	return &Handler{svc: svc, hub: hub}
 }
 
+// GetPresence returns the room's process-local online and typing users.
+// @Summary      Get room presence
+// @Tags         presence
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  int64  true  "Room ID" minimum(1)
+// @Success      200  {object} ws.PresenceSnapshot
+// @Failure      400  {object} apperror.AppError
+// @Failure      401  {object} apperror.AppError
+// @Failure      403  {object} apperror.AppError
+// @Failure      404  {object} apperror.AppError
+// @Failure      500  {object} apperror.AppError
+// @Router       /api/v1/rooms/{id}/presence [get]
+func (h *Handler) GetPresence(c *gin.Context) {
+	roomID, err := parsePathID(c, "id")
+	if err != nil {
+		apperror.Respond(c, err)
+		return
+	}
+	snapshot, err := h.svc.GetPresence(c.Request.Context(), middleware.MustGetUserID(c), roomID)
+	if err != nil {
+		apperror.Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, snapshot)
+}
+
 // RegisterRoutes attaches all chat routes to the provided router groups.
 // All routes in private require a valid JWT (Auth middleware applied by httpserver).
 func (h *Handler) RegisterRoutes(private *gin.RouterGroup, wsMiddleware ...gin.HandlerFunc) {
