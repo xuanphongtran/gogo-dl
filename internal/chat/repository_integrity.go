@@ -66,10 +66,76 @@ func (r *postgresRepository) RemoveMember(ctx context.Context, roomID, userID in
 	}
 	if affected == 0 {
 		member, memberErr := r.GetMember(ctx, roomID, userID)
-		if memberErr == nil && member.Role == RoomRoleOwner {
+		if memberErr != nil {
+			return memberErr
+		}
+		if member.Role == RoomRoleOwner {
 			return apperror.ErrOwnerTransfer
 		}
 		return apperror.ErrNotFound
 	}
 	return nil
+}
+
+// RemoveMemberWithAuthorization keeps role reads and deletion in one transaction.
+// The callback belongs to the service so persistence does not define permissions.
+func (r *postgresRepository) RemoveMemberWithAuthorization(ctx context.Context, roomID, actorID, userID int64, authorize func(actor, target *RoomMember) error) (*RoomMember, error) {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("chat repo RemoveMemberWithAuthorization begin: %w", err)
+	}
+	rollback := func(opErr error) (*RoomMember, error) {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+			return nil, errors.Join(opErr, fmt.Errorf("chat repo RemoveMemberWithAuthorization rollback: %w", rollbackErr))
+		}
+		return nil, opErr
+	}
+
+	// Ownership transfers lock the room first too, keeping the lock order stable.
+	var lockedRoomID int64
+	if err := tx.GetContext(ctx, &lockedRoomID, `SELECT id FROM rooms WHERE id = $1 FOR UPDATE`, roomID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return rollback(apperror.ErrNotFound)
+		}
+		return rollback(fmt.Errorf("chat repo RemoveMemberWithAuthorization room: %w", err))
+	}
+	var members []*RoomMember
+	if err := tx.SelectContext(ctx, &members, `
+		SELECT rm.room_id, rm.user_id, u.username, rm.role, rm.joined_at
+		FROM room_members rm
+		JOIN users u ON u.id = rm.user_id
+		WHERE rm.room_id = $1 AND rm.user_id IN ($2, $3)
+		ORDER BY rm.user_id
+		FOR UPDATE OF rm`, roomID, actorID, userID); err != nil {
+		return rollback(fmt.Errorf("chat repo RemoveMemberWithAuthorization members: %w", err))
+	}
+	var actor, target *RoomMember
+	for _, member := range members {
+		if member.UserID == actorID {
+			actor = member
+		}
+		if member.UserID == userID {
+			target = member
+		}
+	}
+	if err := authorize(actor, target); err != nil {
+		return rollback(err)
+	}
+
+	result, err := tx.ExecContext(ctx,
+		`DELETE FROM room_members WHERE room_id = $1 AND user_id = $2 AND role <> 'owner'`, roomID, userID)
+	if err != nil {
+		return rollback(fmt.Errorf("chat repo RemoveMemberWithAuthorization delete: %w", err))
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return rollback(fmt.Errorf("chat repo RemoveMemberWithAuthorization rows affected: %w", err))
+	}
+	if affected == 0 {
+		return rollback(apperror.ErrNotFound)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("chat repo RemoveMemberWithAuthorization commit: %w", err)
+	}
+	return target, nil
 }

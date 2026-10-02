@@ -11,10 +11,11 @@ requirements and verification decisions.
 - [04 — API and Abuse Protection](./04-api-hardening.md)
 - [05 — Room Membership and Roles](./05-room-membership-roles.md)
 
-The related execution plans remain in [`plan/`](../plan/). A specification is
+The related execution plans remain in [`plan/`](../plan/).
 
-Plans 01–04 are Done after verification. Phase 05 is Ready for implementation
-after the decisions and contracts in its specification are accepted.
+Plans 01–04 are Done after verification. Phase 05 is Pending at the user's
+request; its review fixes and dedicated PostgreSQL verification remain
+outstanding, as recorded in the related plan.
 
 ## Shared constraints
 
