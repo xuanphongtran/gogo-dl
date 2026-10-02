@@ -251,11 +251,20 @@ Node.js 22 via nvm):
 ```bash
 nvm use 22
 npx --yes @asyncapi/cli@4.1.1 validate docs/asyncapi.yaml
-PUPPETEER_SKIP_DOWNLOAD=1 npx --yes @asyncapi/cli@4.1.1 generate fromTemplate docs/asyncapi.yaml @asyncapi/html-template@2.3.14 --install --no-interactive -o /tmp/gogo-dl-asyncapi
+make docs-asyncapi
 ```
 
-The generated HTML is a local documentation artifact; the Go server does not
-serve it. Update `docs/asyncapi.yaml` whenever the WebSocket contract changes.
+Open `http://localhost:8080/asyncapi/` (or `/asyncapi/index.html`) to read the
+generated documentation. Download the contract at `/asyncapi/asyncapi.yaml`.
+Like Swagger, these routes are available only outside production; they return
+404 when `APP_ENV=production`.
+
+Update `docs/asyncapi.yaml` whenever the WebSocket contract changes, then run
+`nvm use 22` and `make docs-asyncapi`. Include the regenerated `docs/asyncapi/`
+assets with the YAML change. A Go test checks that the generated source stamp
+matches the current contract. HTML, CSS, JavaScript, and YAML are embedded in
+the Go binary, so regular Go builds and Render deployments do not require Node
+or documentation files at runtime.
 
 ```
 GET /api/v1/ws?token=<access_token>
