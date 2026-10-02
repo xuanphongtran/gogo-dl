@@ -1258,6 +1258,214 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/rooms/{id}/presence": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "presence"
+                ],
+                "summary": "Get room presence",
+                "parameters": [
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "Room ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_internal_ws.PresenceSnapshot"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/rooms/{id}/read-state": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "read-state"
+                ],
+                "summary": "Get personal room read state",
+                "parameters": [
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "Room ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_chat.ReadState"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "read-state"
+                ],
+                "summary": "Advance personal room read state",
+                "parameters": [
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "Room ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Read acknowledgement",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_chat.AdvanceReadStateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_chat.ReadState"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/users/me": {
             "get": {
                 "security": [
@@ -1496,11 +1704,43 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_xuanphongtran_gogo-dl_internal_ws.PresenceSnapshot": {
+            "type": "object",
+            "properties": {
+                "online_user_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "room_id": {
+                    "type": "string"
+                },
+                "typing_user_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
         "github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError": {
             "type": "object",
             "properties": {
                 "error": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_chat.AdvanceReadStateRequest": {
+            "type": "object",
+            "required": [
+                "last_read_message_id"
+            ],
+            "properties": {
+                "last_read_message_id": {
+                    "type": "integer",
+                    "minimum": 1
                 }
             }
         },
@@ -1699,6 +1939,22 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/internal_chat.Message"
                     }
+                }
+            }
+        },
+        "internal_chat.ReadState": {
+            "type": "object",
+            "properties": {
+                "last_read_message_id": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "room_id": {
+                    "type": "integer"
+                },
+                "unread_count": {
+                    "type": "integer",
+                    "minimum": 0
                 }
             }
         },

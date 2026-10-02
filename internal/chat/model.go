@@ -144,3 +144,15 @@ type InvitationsResponse struct {
 type JoinResponse struct {
 	Message string `json:"message"`
 }
+
+// ReadState is a member's personal room cursor and current unread count.
+type ReadState struct {
+	RoomID            int64 `db:"room_id"              json:"room_id"`
+	LastReadMessageID int64 `db:"last_read_message_id" json:"last_read_message_id" minimum:"0"`
+	UnreadCount       int64 `db:"unread_count"         json:"unread_count" minimum:"0"`
+}
+
+// AdvanceReadStateRequest acknowledges messages through a valid room message.
+type AdvanceReadStateRequest struct {
+	LastReadMessageID int64 `json:"last_read_message_id" binding:"required,min=1" minimum:"1"`
+}

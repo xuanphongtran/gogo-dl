@@ -2,7 +2,7 @@
 
 This directory breaks the next implementation work into ordered, reviewable feature plans for the real-time chat domain.
 
-Detailed implementation specifications for plans 01–06 are in [`spec/`](../spec/), with the combined P0 execution sequence in [`00-p0-foundation-execution.md`](./00-p0-foundation-execution.md).
+Detailed implementation specifications for plans 01–07 are in [`spec/`](../spec/), with the combined P0 execution sequence in [`00-p0-foundation-execution.md`](./00-p0-foundation-execution.md).
 
 ## Priority model
 
@@ -22,7 +22,7 @@ Within the same priority, lower sequence numbers should normally be completed fi
 | 04 | P0 | [API and abuse protection](./04-api-hardening.md) | Safe validation, origin checks, limits, and consistent errors | 01, 03 | Done |
 | 05 | P1 | [Room membership and roles](./05-room-membership-roles.md) | Private rooms, invitations, ownership, and moderation roles | 02–04 | Pending |
 | 06 | P1 | [Message lifecycle](./06-message-lifecycle.md) | Edit, delete, and consistent real-time message events | 03–05 | Done |
-| 07 | P1 | [Presence, typing, and read state](./07-presence-read-state.md) | Online state, typing indicators, and unread/read tracking | 03, 05 | Proposed |
+| 07 | P1 | [Presence, typing, and read state](./07-presence-read-state.md) | Online state, typing indicators, and unread/read tracking | 03, 05 | Done |
 | 08 | P2 | [Search, attachments, and notifications](./08-rich-messaging.md) | Discoverable messages and richer asynchronous engagement | 05–07 | Proposed |
 | 09 | P2 | [Scale and observability](./09-scale-observability.md) | Multi-instance delivery, metrics, tracing, and SLOs | 01–08 | Proposed |
 
@@ -34,6 +34,12 @@ with authorization locked during new message mutations and isolated PostgreSQL
 and race verification complete. Phase 05 review fixes for public leave retries and atomic member-removal
 authorization are included from develop; dedicated PostgreSQL verification
 remains separate work.
+
+Phase 07 is Done on a branch from main with the existing membership contract.
+The full race suite (including isolated PostgreSQL), vet, build and independent
+review/fixes are complete. Phase 06 application code is now included from develop,
+with both lifecycle and read-state repository contracts retained. The exact
+Phase 06 schema migration remains before version 7 during deployment.
 
 ## Status values
 

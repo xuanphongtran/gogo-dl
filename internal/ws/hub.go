@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog/log"
@@ -58,7 +59,8 @@ type Hub struct {
 
 	// rooms maps roomID → set of *Client.
 	// Using a map of maps avoids a per-room mutex while keeping room fan-out O(n members).
-	rooms map[string]map[string]*Client
+	rooms  map[string]map[string]*Client
+	typing map[string]map[string]time.Time
 
 	// Inbound registration requests from new connections.
 	register   chan *Client
@@ -73,6 +75,7 @@ type Hub struct {
 	// broadcast carries events pushed by domain services (e.g. chat service).
 	broadcast     chan BroadcastRequest
 	userBroadcast chan UserBroadcastRequest
+	presence      chan presenceRequest
 
 	// authorized carries results of room authorization work performed outside Run.
 	authorized chan authorizationResult
@@ -138,12 +141,14 @@ func New(options ...Options) *Hub {
 	return &Hub{
 		clients:               make(map[string]*Client),
 		rooms:                 make(map[string]map[string]*Client),
+		typing:                make(map[string]map[string]time.Time),
 		register:              make(chan *Client, 64),
 		registered:            make(chan *Client, 64),
 		unregister:            make(chan *Client, 64),
 		inbound:               make(chan inboundMessage, 256),
 		broadcast:             make(chan BroadcastRequest, 256),
 		userBroadcast:         make(chan UserBroadcastRequest, 256),
+		presence:              make(chan presenceRequest, 64),
 		authorized:            make(chan authorizationResult, 64),
 		revoke:                make(chan revocationRequest, 64),
 		admit:                 make(chan admissionRequest, 64),
@@ -169,6 +174,8 @@ func New(options ...Options) *Hub {
 // All state mutations (maps) are performed here — no locking required.
 func (h *Hub) Run() {
 	defer close(h.stopped)
+	ticker := time.NewTicker(typingSweepInterval)
+	defer ticker.Stop()
 	log.Info().Msg("ws: hub started")
 	for {
 		select {
@@ -208,7 +215,7 @@ func (h *Hub) Run() {
 
 				// Remove the client from every room it was in.
 				for roomID := range client.rooms {
-					h.removeFromRoom(roomID, client)
+					h.leaveRoom(roomID, client)
 					// Notify remaining members that this user left.
 					h.fanOut(roomID, Message{
 						Type:   EventLeave,
@@ -246,11 +253,20 @@ func (h *Hub) Run() {
 		case req := <-h.userBroadcast:
 			h.fanOutUser(req.UserID, req.Message)
 
+		case req := <-h.presence:
+			req.response <- h.roomPresence(req.roomID, time.Now())
+
+		case now := <-ticker.C:
+			h.expireTyping(now)
+
 		// ── Graceful shutdown ─────────────────────────────────────────────────
 		case <-h.done:
 			// Close all client send channels so WritePump goroutines exit.
 			for _, c := range h.clients {
 				c.cancel()
+				if c.authorization != nil {
+					c.authorization.cancel()
+				}
 				close(c.send)
 			}
 			h.connectionCount = 0
@@ -512,11 +528,11 @@ func (h *Hub) handleInbound(ibm inboundMessage) {
 			h.sendProtocolError(client, ibm.Message.RoomID, "invalid_room_id", "invalid room id")
 			return
 		}
+		h.invalidateAuthorization(client, roomID)
 		if _, joined := client.rooms[roomID]; !joined {
 			return
 		}
-		h.removeFromRoom(roomID, client)
-		delete(client.rooms, roomID)
+		h.leaveRoom(roomID, client)
 		h.fanOut(roomID, Message{
 			Type:   EventLeave,
 			RoomID: roomID,
@@ -525,6 +541,13 @@ func (h *Hub) handleInbound(ibm inboundMessage) {
 				"client_id": client.ID,
 			},
 		}, "")
+
+	case EventTypingStarted, EventTypingStopped:
+		if ibm.Message.Payload != nil {
+			h.sendProtocolError(client, ibm.Message.RoomID, "invalid_command", "typing commands do not accept a payload")
+			return
+		}
+		h.requestTyping(client, ibm.Message.RoomID, ibm.Message.Type, time.Now())
 
 	case EventError:
 		h.sendProtocolError(client, ibm.Message.RoomID, "unsupported_event", "client error events are not accepted")

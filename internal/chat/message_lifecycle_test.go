@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -327,9 +328,26 @@ func TestMessageLifecycleWebSocketPayload(t *testing.T) {
 	if err := conn.WriteJSON(ws.Message{Type: ws.EventJoin, RoomID: "10"}); err != nil {
 		t.Fatal(err)
 	}
-	var joined ws.Message
-	if err := conn.ReadJSON(&joined); err != nil || joined.Type != ws.EventJoin {
-		t.Fatalf("join=%+v %v", joined, err)
+	// A join emits subscription and presence events, which may share a frame.
+	// Drain all three before checking the subsequent committed mutation events.
+	pending := map[ws.EventType]bool{
+		ws.EventJoin: true, ws.EventPresence: true, ws.EventPresenceSnapshot: true,
+	}
+	for len(pending) > 0 {
+		_, frame, err := conn.ReadMessage()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, line := range bytes.Split(frame, []byte("\n")) {
+			var event ws.Message
+			if err := json.Unmarshal(line, &event); err != nil {
+				t.Fatal(err)
+			}
+			if !pending[event.Type] || event.RoomID != "10" {
+				t.Fatalf("unexpected join event: %+v", event)
+			}
+			delete(pending, event.Type)
+		}
 	}
 	repo := newLifecycleRepository()
 	svc := NewService(repo, hub)

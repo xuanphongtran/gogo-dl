@@ -146,6 +146,9 @@ Profile updates accept an avatar URL only when it is an absolute `http://` or
 | POST   | `/api/v1/rooms/:id/messages`    | ✓    | Send a message (+ WS broadcast)  |
 | PATCH | `/api/v1/rooms/:id/messages/:message_id` | ✓ | Edit my message using its revision |
 | DELETE | `/api/v1/rooms/:id/messages/:message_id` | ✓ | Delete a message and return its tombstone |
+| GET | `/api/v1/rooms/:id/presence` | ✓ | Room presence and typing snapshot |
+| GET | `/api/v1/rooms/:id/read-state` | ✓ | My read cursor and unread count |
+| PUT | `/api/v1/rooms/:id/read-state` | ✓ | Advance my read cursor |
 
 Invitation actions use `GET /api/v1/users/me/invitations`, `POST /api/v1/invitations/:id/accept`, and `POST /api/v1/invitations/:id/decline`. Public rooms can be discovered and joined by authenticated users; private rooms require an accepted invitation. Message history and WebSocket subscriptions require current membership.
 
@@ -191,6 +194,43 @@ sets the audit reference to null. See the [Phase 6 specification](spec/06-messag
 for concurrency, retry and retention details. Migration `000006` is embedded and
 applies automatically before the updated server accepts requests.
 
+### Presence and personal read state
+
+These endpoints require current membership. Public nonmembers receive `403`;
+private nonmembers and missing rooms receive `404`.
+
+Presence is room subscription activity in this process. A user appears online
+while at least one authorized socket is joined to the room; multiple tabs are
+combined. `GET /api/v1/rooms/1/presence` returns:
+
+```json
+{ "room_id": "1", "online_user_ids": [7], "typing_user_ids": [] }
+```
+
+`GET /api/v1/rooms/1/read-state` returns:
+
+```json
+{ "room_id": 1, "last_read_message_id": 42, "unread_count": 3 }
+```
+
+To acknowledge history through a message, use `PUT` on the same path with
+`{ "last_read_message_id": 42 }`. The ID must be positive and belong to this room
+(`404` otherwise). The cursor only increases; valid equal/older retries return
+the current state. An unset cursor is `0`. Unread counts all room message IDs
+above the cursor except your own messages, including history before joining and
+deleted-author messages. Message tombstones count by ID; edits/deletes
+do not create another unread item. Reading history does not advance the cursor.
+Leaving/removal clears it, and rejoining starts at `0`.
+
+Changed cursors are persisted before private `read_state` events are delivered
+to your connections. Other members do not receive read receipts. Events are
+best effort; after reconnect, reload GET for an authoritative count. Keep the
+maximum cursor when processing out-of-order events; old counts may be stale.
+
+Message lifecycle and read-state endpoints are included together. Embedded
+migration `000006` provides message lifecycle fields, followed by `000007` for
+read cursors. Both apply automatically in order before the server accepts requests.
+
 ### WebSocket
 
 The machine-readable WebSocket contract is [docs/asyncapi.yaml](docs/asyncapi.yaml)
@@ -213,7 +253,7 @@ serve it. Update `docs/asyncapi.yaml` whenever the WebSocket contract changes.
 GET /api/v1/ws?token=<access_token>
 ```
 
-Clients may send only `join` and `leave` commands. `join` requires current room
+Clients may send `join`, `leave`, `typing_started` and `typing_stopped` commands. `join` requires current room
 membership; use the REST room endpoints to join a public room or accept a private
 room invitation first. A `leave` command ends only the WebSocket subscription.
 To send a durable chat message, call `POST /api/v1/rooms/:id/messages` and then
@@ -237,6 +277,18 @@ Send one JSON command per client frame. For example:
     "created_at": "2026-01-01T12:00:00Z"
   }
 }
+
+// Start/refresh typing (no payload); stop with type "typing_stopped"
+{ "type": "typing_started", "room_id": "1" }
+
+// Server typing event: identity and expiry are server-generated
+{ "type": "typing_started", "room_id": "1", "payload": { "user_id": 7, "expires_at": "2026-01-01T12:00:05Z" } }
+
+// Aggregate presence; socket joins also receive a presence_snapshot
+{ "type": "presence", "room_id": "1", "payload": { "user_id": 7, "online": true } }
+
+// Delivered only to this user's connections after the cursor commits
+{ "type": "read_state", "room_id": "1", "payload": { "room_id": 1, "last_read_message_id": 42, "unread_count": 3 } }
 ```
 
 Server-only `message_updated` and `message_deleted` events use this same envelope
@@ -246,7 +298,22 @@ with a complete Message payload, including numeric `room_id`, `revision`,
 after the database commit; retries/no-ops emit no additional event. Delivery is
 best effort. For a known message, apply only greater revisions so a late edit
 cannot overwrite a tombstone. Refresh relevant history after reconnect or a gap;
-event arrival order is not guaranteed. Clients may send only `join` and `leave`.
+event arrival order is not guaranteed.
+
+Typing requires an authorized joined socket. Starts are throttled to once per
+second per connection (`rate_limited` on excess), expire in 5 seconds and are
+cleared within a 250 ms sweep interval. Refresh approximately every 2 seconds
+while typing. Stops use `expires_at: null`. Tabs are aggregated, so one stopped
+tab does not stop another active tab. Leave, disconnect and membership
+revocation clear that connection's state. Already-stopped retries emit no event
+and perform no database work. Only one authorization command may be
+pending per connection (`authorization_pending`); typing before join returns
+`not_joined`. Clients may not supply event payloads or forge server-only events.
+
+Reconnect requires a fresh join and snapshot. Existing ping/pong deadlines
+remove stale sockets; restart clears ephemeral presence/typing. Keep one server
+instance until shared delivery is implemented. Full contracts and privacy rules
+are in [the Phase 7 specification](spec/07-presence-read-state.md).
 
 ---
 
@@ -273,6 +340,10 @@ Unit and WebSocket tests run without external services. PostgreSQL integration t
     TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/gogo_dl_test?sslmode=disable go test -race -count=1 ./...
 
 The integration suite covers clean migration, upgrade from migration 000001, rollback, transaction integrity, deleted-author history, and typed constraint mapping.
+Phase 7 tests additionally cover upgrade from schema 5, concurrent read advances,
+membership locking, unread counts and leave/rejoin cursor cleanup. Use a fresh
+disposable database whose name ends in `_test`; the Phase 7 fixture refuses an
+existing application schema. Its cleanup drops only that test database's schema.
 
 Phase 6 integration tests additionally cover upgrade from schema 000005,
 lifecycle constraints, tombstone pagination/audit, write rollback, concurrent
@@ -308,7 +379,7 @@ Clients should proactively refresh before the access token expires (`expires_at`
 
 ## Safety behavior for realtime access
 
-- WebSocket clients may send only `join` and `leave` commands. Room joins are checked against PostgreSQL membership before the Hub subscribes the connection.
+- WebSocket clients may send `join`, `leave`, `typing_started` and `typing_stopped` commands. Joins and typing are checked against PostgreSQL membership outside the event loop. Pending authorization is bounded and invalidated by leave/revocation.
 - Client-originated message and lifecycle events are rejected; durable messages are persisted through the chat service before broadcast.
 - Membership revocation removes active room subscriptions after the membership transaction commits and the Hub processes the control event.
 - If an account is deleted, authored message history is retained with a nullable `user_id` and the username `[deleted user]`.
