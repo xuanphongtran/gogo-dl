@@ -26,6 +26,9 @@ COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 # Copy the compiled binary.
 COPY --from=builder /app/bin/gogo-dl /gogo-dl
 
+# Copy migration files so the app can run migrations on startup.
+COPY --from=builder /app/migrations /migrations
+
 EXPOSE 8080
 
 ENTRYPOINT ["/gogo-dl"]

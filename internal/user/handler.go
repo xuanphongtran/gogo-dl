@@ -41,22 +41,17 @@ func (h *Handler) RegisterRoutes(public, private *gin.RouterGroup) {
 }
 
 // Register godoc
-// @Summary      Register a new user
-// @Description  Creates an account and returns an access/refresh token pair.
-// @Tags         auth
-// @Accept       json
-// @Produce      json
-// @Param        body  body  RegisterRequest  true  "Registration payload"
-// @Success      201   {object} middleware.TokenPair
-// @Failure      400   {object} apperror.AppError
-// @Failure      409   {object} apperror.AppError
-// @Failure      429   {object} apperror.AppError
-// @Failure      500   {object} apperror.AppError
-// @Router       /api/v1/auth/register [post]
+// @Summary  Register a new user
+// @Tags     auth
+// @Accept   json
+// @Produce  json
+// @Param    body body RegisterRequest true "Registration payload"
+// @Success  201 {object} middleware.TokenPair
+// @Router   /auth/register [post]
 func (h *Handler) Register(c *gin.Context) {
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apperror.Respond(c, middleware.BindingError(err))
+		apperror.Respond(c, apperror.New(http.StatusBadRequest, err.Error()))
 		return
 	}
 
@@ -70,21 +65,12 @@ func (h *Handler) Register(c *gin.Context) {
 }
 
 // Login godoc
-// @Summary      Login and get JWT token pair
-// @Tags         auth
-// @Accept       json
-// @Produce      json
-// @Param        body  body  LoginRequest  true  "Login credentials"
-// @Success      200   {object} middleware.TokenPair
-// @Failure      400   {object} apperror.AppError
-// @Failure      401   {object} apperror.AppError
-// @Failure      429   {object} apperror.AppError
-// @Failure      500   {object} apperror.AppError
-// @Router       /api/v1/auth/login [post]
+// @Summary  Login and get JWT token pair
+// @Tags     auth
 func (h *Handler) Login(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apperror.Respond(c, middleware.BindingError(err))
+		apperror.Respond(c, apperror.New(http.StatusBadRequest, err.Error()))
 		return
 	}
 
@@ -98,21 +84,14 @@ func (h *Handler) Login(c *gin.Context) {
 }
 
 // RefreshTokens godoc
-// @Summary      Exchange a refresh token for a new token pair
-// @Tags         auth
-// @Accept       json
-// @Produce      json
-// @Param        body  body  RefreshTokenRequest  true  "Refresh token payload"
-// @Success      200   {object} middleware.TokenPair
-// @Failure      400   {object} apperror.AppError
-// @Failure      401   {object} apperror.AppError
-// @Failure      429   {object} apperror.AppError
-// @Failure      500   {object} apperror.AppError
-// @Router       /api/v1/auth/refresh [post]
+// @Summary  Exchange a refresh token for a new token pair
+// @Tags     auth
 func (h *Handler) RefreshTokens(c *gin.Context) {
-	var body RefreshTokenRequest
+	var body struct {
+		RefreshToken string `json:"refresh_token" binding:"required"`
+	}
 	if err := c.ShouldBindJSON(&body); err != nil {
-		apperror.Respond(c, middleware.BindingError(err))
+		apperror.Respond(c, apperror.New(http.StatusBadRequest, err.Error()))
 		return
 	}
 
@@ -126,15 +105,6 @@ func (h *Handler) RefreshTokens(c *gin.Context) {
 }
 
 // GetMe returns the authenticated user's profile.
-// @Summary      Get the current user's profile
-// @Tags         users
-// @Produce      json
-// @Security     BearerAuth
-// @Success      200  {object} ProfileResponse
-// @Failure      401  {object} apperror.AppError
-// @Failure      404  {object} apperror.AppError
-// @Failure      500  {object} apperror.AppError
-// @Router       /api/v1/users/me [get]
 func (h *Handler) GetMe(c *gin.Context) {
 	userID := middleware.MustGetUserID(c)
 
@@ -148,24 +118,12 @@ func (h *Handler) GetMe(c *gin.Context) {
 }
 
 // UpdateMe applies profile changes for the authenticated user.
-// @Summary      Update the current user's profile
-// @Tags         users
-// @Accept       json
-// @Produce      json
-// @Security     BearerAuth
-// @Param        body  body  UpdateProfileRequest  true  "Profile updates"
-// @Success      200   {object} ProfileResponse
-// @Failure      400   {object} apperror.AppError
-// @Failure      401   {object} apperror.AppError
-// @Failure      409   {object} apperror.AppError
-// @Failure      500   {object} apperror.AppError
-// @Router       /api/v1/users/me [patch]
 func (h *Handler) UpdateMe(c *gin.Context) {
 	userID := middleware.MustGetUserID(c)
 
 	var req UpdateProfileRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apperror.Respond(c, middleware.BindingError(err))
+		apperror.Respond(c, apperror.New(http.StatusBadRequest, err.Error()))
 		return
 	}
 
@@ -179,14 +137,6 @@ func (h *Handler) UpdateMe(c *gin.Context) {
 }
 
 // DeleteMe removes the authenticated user's account.
-// @Summary      Delete the current user's account
-// @Tags         users
-// @Security     BearerAuth
-// @Success      204  "Account deleted"
-// @Failure      401  {object} apperror.AppError
-// @Failure      409  {object} apperror.AppError
-// @Failure      500  {object} apperror.AppError
-// @Router       /api/v1/users/me [delete]
 func (h *Handler) DeleteMe(c *gin.Context) {
 	userID := middleware.MustGetUserID(c)
 

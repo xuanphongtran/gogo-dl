@@ -27,23 +27,13 @@ import (
 	"github.com/xuanphongtran/gogo-dl/internal/ws"
 )
 
-// @title       Gogo DL API
-// @version     1.0
-// @description REST API for the Gogo DL real-time chat backend.
-// @host        localhost:8080
-// @BasePath    /
-// @schemes     http https
-// @securityDefinitions.apikey BearerAuth
-// @in          header
-// @name        Authorization
-// @description Enter the access token as: Bearer {token}
 func main() {
 	// ── 1. Logging ────────────────────────────────────────────────────────────
 	// Pretty-print in development; JSON in production (zerolog detects automatically).
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339})
 
 	// ── 2. Config ─────────────────────────────────────────────────────────────
-	cfg, err := config.Load(".env.local", "configs/.env")
+	cfg, err := config.Load("configs/.env")
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to load config")
 	}
@@ -60,8 +50,7 @@ func main() {
 		Msg("starting gogo-dl")
 
 	// ── 3. Database ───────────────────────────────────────────────────────────
-	// The encoded URL also handles passwords containing URL-special characters.
-	db, err := database.Connect(cfg.MigrationURL())
+	db, err := database.Connect(cfg.DSN())
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to connect to database")
 	}
@@ -69,20 +58,17 @@ func main() {
 	log.Info().Msg("database connected")
 
 	// Run pending migrations on startup.
-	// Migration SQL is embedded in the binary, so startup is independent of the working directory.
-	if err := database.MigrateUpEmbedded(context.Background(), db.DB.DB); err != nil {
+	// "file://migrations" looks for SQL files relative to the working directory.
+	if err := database.MigrateUp(cfg.DSN(), "file://migrations"); err != nil {
 		log.Fatal().Err(err).Msg("failed to run migrations")
 	}
 	log.Info().Msg("migrations up to date")
 
 	// ── 4. WebSocket Hub ──────────────────────────────────────────────────────
-	hub := ws.New(ws.Options{
-		AllowedOrigins:        cfg.WSAllowedOrigins,
-		AllowMissingOrigin:    cfg.WSAllowMissingOrigin,
-		MaxMessageBytes:       cfg.WSMaxMessageBytes,
-		MaxConnections:        cfg.WSMaxConnections,
-		MaxConnectionsPerUser: cfg.WSMaxConnectionsPerUser,
-	})
+	hub := ws.New()
+	// Run() is the hub's event loop — must be in its own goroutine.
+	go hub.Run()
+	log.Info().Msg("ws hub running")
 
 	// ── 5. Dependency wiring (manual DI, no framework) ───────────────────────
 
@@ -94,10 +80,6 @@ func main() {
 	// chat domain
 	chatRepo := chat.NewRepository(db.DB)
 	chatSvc := chat.NewService(chatRepo, hub)
-	hub.SetRoomAuthorizer(chatSvc)
-	// Run() is the hub event loop; start it after all dependencies are wired.
-	go hub.Run()
-	log.Info().Msg("ws hub running")
 	chatHandler := chat.NewHandler(chatSvc, hub)
 
 	// ── 6. HTTP Server ────────────────────────────────────────────────────────

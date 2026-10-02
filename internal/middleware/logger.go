@@ -8,11 +8,12 @@ import (
 )
 
 // Logger returns a Gin middleware that logs each request with zerolog.
-// Fields: method, path, status, latency, request_id, remote_addr, user_agent.
+// Fields: method, path, status, latency, client_ip, user_agent.
 func Logger() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		path := c.Request.URL.Path
+		query := c.Request.URL.RawQuery
 
 		c.Next()
 
@@ -26,13 +27,16 @@ func Logger() gin.HandlerFunc {
 			event = log.Warn()
 		}
 
+		if query != "" {
+			path = path + "?" + query
+		}
+
 		event.
 			Str("method", c.Request.Method).
 			Str("path", path).
 			Int("status", status).
 			Dur("latency", latency).
-			Str("request_id", requestIDString(c)).
-			Str("remote_addr", c.Request.RemoteAddr).
+			Str("client_ip", c.ClientIP()).
 			Str("user_agent", c.Request.UserAgent()).
 			Msg("http")
 	}

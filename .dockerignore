@@ -7,7 +7,6 @@ bin/
 
 # Local env file — never bake secrets into the image
 configs/.env
-.env.local
 
 # Editor / OS noise
 .DS_Store
