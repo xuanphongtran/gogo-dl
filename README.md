@@ -156,7 +156,15 @@ Leaving a public room returns `204` even when the caller is no longer a member,
 so retries are safe. A private room without membership, or a missing room,
 returns `404`. Owners must transfer ownership before leaving (`409`).
 
+For a public room the caller has not joined, `role` is `null`; otherwise it is
+`owner`, `moderator`, or `member`.
+
 ### Message lifecycle
+
+Sending and editing require nonblank content of at most 4000 UTF-8 bytes after
+trimming whitespace. Content validation failures return `400`; `413` means the
+entire HTTP request body exceeds `HTTP_MAX_BODY_BYTES`, including JSON overhead.
+The byte limit can be reached before 4000 characters for non-ASCII text.
 
 Messages include `revision` (initially `1`), `edited_at` and `deleted_at` (nullable
 UTC timestamps). The author must remain a room member to edit, with no edit time

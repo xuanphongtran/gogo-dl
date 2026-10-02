@@ -65,6 +65,8 @@ definitions:
   internal_chat.EditMessageRequest:
     properties:
       content:
+        description: Content must be nonblank and at most 4000 UTF-8 bytes after trimming
+          whitespace.
         maxLength: 4000
         minLength: 1
         type: string
@@ -190,7 +192,9 @@ definitions:
       name:
         type: string
       role:
-        $ref: '#/definitions/internal_chat.RoomRole'
+        allOf:
+        - $ref: '#/definitions/internal_chat.RoomRole'
+        x-nullable: true
       visibility:
         $ref: '#/definitions/internal_chat.RoomVisibility'
     type: object
@@ -235,6 +239,8 @@ definitions:
   internal_chat.SendMessageRequest:
     properties:
       content:
+        description: Content must be nonblank and at most 4000 UTF-8 bytes after trimming
+          whitespace.
         maxLength: 4000
         minLength: 1
         type: string
@@ -924,6 +930,8 @@ paths:
     post:
       consumes:
       - application/json
+      description: Content must be nonblank and at most 4000 UTF-8 bytes after trimming
+        whitespace.
       parameters:
       - description: Room ID
         in: path
@@ -944,7 +952,7 @@ paths:
           schema:
             $ref: '#/definitions/internal_chat.Message'
         "400":
-          description: Bad Request
+          description: Invalid request, including content exceeding the message limit
           schema:
             $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
         "401":
@@ -960,7 +968,7 @@ paths:
           schema:
             $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
         "413":
-          description: Request Entity Too Large
+          description: Entire HTTP request body exceeds HTTP_MAX_BODY_BYTES
           schema:
             $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
         "500":
@@ -1020,6 +1028,8 @@ paths:
     patch:
       consumes:
       - application/json
+      description: Content must be nonblank and at most 4000 UTF-8 bytes after trimming
+        whitespace.
       parameters:
       - description: Room ID
         in: path
@@ -1045,7 +1055,7 @@ paths:
           schema:
             $ref: '#/definitions/internal_chat.Message'
         "400":
-          description: Bad Request
+          description: Invalid request, including content exceeding the message limit
           schema:
             $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
         "401":
@@ -1065,7 +1075,7 @@ paths:
           schema:
             $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
         "413":
-          description: Request Entity Too Large
+          description: Entire HTTP request body exceeds HTTP_MAX_BODY_BYTES
           schema:
             $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
         "500":
