@@ -41,6 +41,19 @@ definitions:
     required:
     - name
     type: object
+  internal_chat.EditMessageRequest:
+    properties:
+      content:
+        maxLength: 4000
+        minLength: 1
+        type: string
+      revision:
+        minimum: 1
+        type: integer
+    required:
+    - content
+    - revision
+    type: object
   internal_chat.Invitation:
     properties:
       created_at:
@@ -105,12 +118,24 @@ definitions:
         type: string
       created_at:
         type: string
+      deleted_at:
+        format: date-time
+        type: string
+        x-nullable: true
+      edited_at:
+        format: date-time
+        type: string
+        x-nullable: true
       id:
+        type: integer
+      revision:
+        minimum: 1
         type: integer
       room_id:
         type: integer
       user_id:
         type: integer
+        x-nullable: true
       username:
         description: joined from users table
         type: string
@@ -903,6 +928,111 @@ paths:
       security:
       - BearerAuth: []
       summary: Send a message to a room
+      tags:
+      - messages
+  /api/v1/rooms/{id}/messages/{message_id}:
+    delete:
+      parameters:
+      - description: Room ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Message ID
+        in: path
+        name: message_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_chat.Message'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+      security:
+      - BearerAuth: []
+      summary: Delete a message as author, owner or moderator
+      tags:
+      - messages
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: Room ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Message ID
+        in: path
+        name: message_id
+        required: true
+        type: integer
+      - description: Content and expected revision
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_chat.EditMessageRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_chat.Message'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+      security:
+      - BearerAuth: []
+      summary: Edit a message authored by the current member
       tags:
       - messages
   /api/v1/rooms/{id}/ownership:

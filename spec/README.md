@@ -1,6 +1,6 @@
 # Implementation Specifications
 
-This directory contains the detailed specifications for the first five planned phases. The documents define behavior, boundaries, decisions, and verification
+This directory contains the detailed specifications for the first six planned phases. The documents define behavior, boundaries, decisions, and verification
 requirements and verification decisions.
 
 ## Specifications
@@ -10,12 +10,13 @@ requirements and verification decisions.
 - [03 — WebSocket Authorization and Protocol Safety](./03-websocket-authorization.md)
 - [04 — API and Abuse Protection](./04-api-hardening.md)
 - [05 — Room Membership and Roles](./05-room-membership-roles.md)
+- [06 — Message Lifecycle](./06-message-lifecycle.md)
 
 The related execution plans remain in [`plan/`](../plan/).
 
 Plans 01–04 are Done after verification. Phase 05 is Pending at the user's
-request; its review fixes and dedicated PostgreSQL verification remain
-outstanding, as recorded in the related plan.
+request. Phase 06 is implemented and verified using the existing membership
+and role contract.
 
 ## Shared constraints
 
