@@ -1,7 +1,11 @@
 // Package chat implements the chat domain: rooms, members, and messages.
 package chat
 
-import "time"
+import (
+	"encoding/json"
+	"github.com/lib/pq"
+	"time"
+)
 
 // RoomVisibility controls who can discover and join a room.
 type RoomVisibility string
@@ -41,15 +45,29 @@ type Room struct {
 
 // Message is a single chat message sent within a room.
 type Message struct {
-	ID        int64      `db:"id"         json:"id"`
-	RoomID    int64      `db:"room_id"    json:"room_id"`
-	UserID    *int64     `db:"user_id"    json:"user_id" extensions:"x-nullable"`
-	Username  string     `db:"username"   json:"username"` // joined from users table
-	Content   string     `db:"content"    json:"content"`
-	CreatedAt time.Time  `db:"created_at" json:"created_at"`
-	Revision  int64      `db:"revision"   json:"revision" minimum:"1"`
-	EditedAt  *time.Time `db:"edited_at"  json:"edited_at" extensions:"x-nullable" format:"date-time"`
-	DeletedAt *time.Time `db:"deleted_at" json:"deleted_at" extensions:"x-nullable" format:"date-time"`
+	MentionUserIDs pq.Int64Array `db:"mention_user_ids" json:"mention_user_ids"`
+	Attachments    []struct{}    `db:"-" json:"attachments"`
+	ID             int64         `db:"id"         json:"id"`
+	RoomID         int64         `db:"room_id"    json:"room_id"`
+	UserID         *int64        `db:"user_id"    json:"user_id" extensions:"x-nullable"`
+	Username       string        `db:"username"   json:"username"` // joined from users table
+	Content        string        `db:"content"    json:"content"`
+	CreatedAt      time.Time     `db:"created_at" json:"created_at"`
+	Revision       int64         `db:"revision"   json:"revision" minimum:"1"`
+	EditedAt       *time.Time    `db:"edited_at"  json:"edited_at" extensions:"x-nullable" format:"date-time"`
+	DeletedAt      *time.Time    `db:"deleted_at" json:"deleted_at" extensions:"x-nullable" format:"date-time"`
+}
+
+// MarshalJSON keeps additive collections empty rather than null on text messages.
+func (m Message) MarshalJSON() ([]byte, error) {
+	type plain Message
+	if m.MentionUserIDs == nil {
+		m.MentionUserIDs = pq.Int64Array{}
+	}
+	if m.Attachments == nil {
+		m.Attachments = []struct{}{}
+	}
+	return json.Marshal(plain(m))
 }
 
 // RoomMember links a user to a room (for membership tracking).
@@ -105,6 +123,8 @@ type ListInvitationsQuery struct {
 
 // SendMessageRequest is the body for POST /rooms/:id/messages.
 type SendMessageRequest struct {
+	MentionUserIDs []int64 `json:"mention_user_ids,omitempty"`
+	IdempotencyKey string  `json:"-" swaggerignore:"true"`
 	// AttachmentIDs are reserved for scanner-backed attachment binding.
 	AttachmentIDs []int64 `json:"attachment_ids,omitempty"`
 	// Content must be nonblank and at most 4000 UTF-8 bytes after trimming whitespace.

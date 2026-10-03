@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/xuanphongtran/gogo-dl/pkg/apperror"
 	"go.opentelemetry.io/otel"
@@ -61,10 +62,14 @@ func (r *postgresRepository) SearchMessages(ctx context.Context, roomID, userID 
 	if !searchable {
 		return nil, apperror.ErrInvalidRequest
 	}
+	projection := searchMessagesSQL
+	if r.mentions {
+		projection = strings.Replace(projection, "m.deleted_at\n", "m.deleted_at"+mentionProjection+"\n", 1)
+	}
 	if beforeID > 0 {
-		err = tx.SelectContext(ctx, &messages, searchMessagesSQL+` AND m.id < $3 ORDER BY m.id DESC LIMIT $4`, roomID, query, beforeID, limit)
+		err = tx.SelectContext(ctx, &messages, projection+` AND m.id < $3 ORDER BY m.id DESC LIMIT $4`, roomID, query, beforeID, limit)
 	} else {
-		err = tx.SelectContext(ctx, &messages, searchMessagesSQL+` ORDER BY m.id DESC LIMIT $3`, roomID, query, limit)
+		err = tx.SelectContext(ctx, &messages, projection+` ORDER BY m.id DESC LIMIT $3`, roomID, query, limit)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("chat repo SearchMessages select: %w", err)

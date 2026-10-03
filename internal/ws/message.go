@@ -21,6 +21,7 @@ const (
 	EventTypingStarted     EventType = "typing_started"
 	EventTypingStopped     EventType = "typing_stopped"
 	EventReadState         EventType = "read_state"
+	EventNotification      EventType = "notification"
 )
 
 // PresencePayload reports an aggregated user's room subscription status.

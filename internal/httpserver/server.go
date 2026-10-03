@@ -114,6 +114,9 @@ func New(
 	if s.options.AttachmentHandler != nil {
 		s.options.AttachmentHandler.RegisterRoutes(private)
 	}
+	if s.options.NotificationHandler != nil {
+		s.options.NotificationHandler.RegisterRoutes(private)
+	}
 	chatHandler.RegisterRoutes(private)
 	chatHandler.RegisterMembershipRoutes(private)
 	chatHandler.RegisterPresenceReadRoutes(private)

@@ -97,6 +97,16 @@ func (r *postgresRepository) mutateMessage(ctx context.Context, roomID, actorID,
 			return rollback(fmt.Errorf("chat repo mutateMessage write: %w", err))
 		}
 	}
+	if r.mentions && msg != nil {
+		if msg.DeletedAt != nil {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM message_mentions WHERE message_id=$1`, msg.ID); err != nil {
+				return rollback(fmt.Errorf("chat delete mentions: %w", err))
+			}
+			msg.MentionUserIDs = nil
+		} else if err := tx.SelectContext(ctx, &msg.MentionUserIDs, `SELECT user_id FROM message_mentions WHERE message_id=$1 ORDER BY user_id`, msg.ID); err != nil {
+			return rollback(fmt.Errorf("chat lifecycle mentions: %w", err))
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, false, fmt.Errorf("chat repo mutateMessage commit: %w", err)
 	}

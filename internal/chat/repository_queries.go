@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/xuanphongtran/gogo-dl/pkg/apperror"
@@ -15,7 +16,8 @@ import (
 // and nullable message authors while retaining the existing write operations.
 type explicitRepository struct {
 	Repository
-	db *sqlx.DB
+	db       *sqlx.DB
+	mentions bool
 }
 
 func (r *explicitRepository) GetRoomByID(ctx context.Context, id int64) (*Room, error) {
@@ -53,13 +55,16 @@ func (r *explicitRepository) ListMessages(ctx context.Context, roomID int64, lim
 		limit = 50
 	}
 
-	const projection = `
+	projection := `
 		SELECT m.id, m.room_id, m.user_id,
 		       COALESCE(u.username, '[deleted user]') AS username,
 		       m.content, m.created_at, m.revision, m.edited_at, m.deleted_at
 		FROM messages m
 		LEFT JOIN users u ON u.id = m.user_id
 		WHERE m.room_id = $1`
+	if r.mentions {
+		projection = strings.Replace(projection, "m.deleted_at", "m.deleted_at"+mentionProjection, 1)
+	}
 
 	var (
 		msgs []*Message

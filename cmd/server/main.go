@@ -26,6 +26,7 @@ import (
 	"github.com/xuanphongtran/gogo-dl/internal/config"
 	"github.com/xuanphongtran/gogo-dl/internal/database"
 	"github.com/xuanphongtran/gogo-dl/internal/httpserver"
+	"github.com/xuanphongtran/gogo-dl/internal/notification"
 	"github.com/xuanphongtran/gogo-dl/internal/outbox"
 	"github.com/xuanphongtran/gogo-dl/internal/telemetry"
 	"github.com/xuanphongtran/gogo-dl/internal/user"
@@ -86,11 +87,16 @@ func run() error {
 	var observability *telemetry.Runtime
 	var stopCleanup context.CancelFunc
 	var cleanupDone chan struct{}
+	var stopNotifications context.CancelFunc
+	var notificationsDone chan struct{}
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(signalCtx), cfg.ShutdownTimeout)
 		defer cancel()
 		if stopCleanup != nil {
 			stopCleanup()
+		}
+		if stopNotifications != nil {
+			stopNotifications()
 		}
 		if srv != nil {
 			srv.BeginDrain()
@@ -118,6 +124,13 @@ func run() error {
 			case <-cleanupDone:
 			case <-ctx.Done():
 				log.Warn().Msg("shutdown: attachment cleanup reached its limit")
+			}
+		}
+		if notificationsDone != nil {
+			select {
+			case <-notificationsDone:
+			case <-ctx.Done():
+				log.Warn().Msg("shutdown: notification worker reached its limit")
 			}
 		}
 		if observability != nil {
@@ -173,7 +186,7 @@ func run() error {
 	userHandler := user.NewHandler(userSvc)
 
 	// chat domain
-	chatRepo := chat.NewRepository(db.DB)
+	chatRepo := chat.NewMentionRepository(db.DB)
 	chatSvc := chat.NewService(chatRepo, hub)
 	hub.SetRoomAuthorizer(chatSvc)
 	// Run() is the hub event loop; start it after all dependencies are wired.
@@ -195,9 +208,18 @@ func run() error {
 		go func() { defer close(cleanupDone); worker.Run(cleanupCtx) }()
 	}
 	attachmentHandler := attachment.NewHandler(attachment.NewService(attachmentRepo, objectStore))
+	notificationRepo := notification.NewRepository(db.DB)
+	notificationHandler := notification.NewHandler(notification.NewService(notificationRepo))
+	notificationCtx, cancelNotifications := context.WithCancel(signalCtx)
+	stopNotifications = cancelNotifications
+	notificationsDone = make(chan struct{})
+	go func() {
+		defer close(notificationsDone)
+		notification.NewWorker(db.DB, outbox.NewStore(db.DB), hub).Run(notificationCtx)
+	}()
 
 	// ── 6. HTTP Server ────────────────────────────────────────────────────────
-	srv = httpserver.New(cfg, userHandler, chatHandler, httpserver.Options{AttachmentHandler: attachmentHandler, Metrics: metrics, CheckDatabase: db.PingContext, RealtimeReady: hub.Ready})
+	srv = httpserver.New(cfg, userHandler, chatHandler, httpserver.Options{AttachmentHandler: attachmentHandler, NotificationHandler: notificationHandler, Metrics: metrics, CheckDatabase: db.PingContext, RealtimeReady: hub.Ready})
 
 	// Start in a goroutine so we can listen for shutdown signals below.
 	serverErr := make(chan error, 1)
