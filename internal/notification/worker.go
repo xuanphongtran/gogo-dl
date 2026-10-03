@@ -133,7 +133,9 @@ func (w *Worker) finish(ctx context.Context, tx *sqlx.Tx, job *outbox.Job) error
 		return err
 	}
 	n, err := r.RowsAffected()
-	if err != nil { return fmt.Errorf("notification lease affected: %w", err) }
+	if err != nil {
+		return fmt.Errorf("notification lease affected: %w", err)
+	}
 	if n != 1 {
 		return fmt.Errorf("notification lease lost")
 	}
