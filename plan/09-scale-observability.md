@@ -2,13 +2,91 @@
 
 **Priority:** P2
 
-**Status:** In progress — 09A Done on `ft/phase-9a`; 09B–09D and external rollout gates pending
+**Status:** Pending — 09A Done; distributed 09B–09D deferred while deployment remains Render Free
 
 **Specification:** [Phase 9 SPEC](../spec/09-scale-observability.md)
 
 **Depends on:** 01–05; 07 shared state; 08 outbox; [Phase 6 integration](06-message-lifecycle.md) for lifecycle producers
 
 ## 1. Acceptance and execution order
+
+### Deployment decision — 2026-10-05
+
+The user keeps Render Free. The active deployment is one Go Web Service instance
+with Neon PostgreSQL, local WebSocket fanout/presence/typing/limits and the existing
+PostgreSQL notification/cleanup workers. Phase 09A remains Done locally; its Free
+staging recovery follow-up below remains open. Distributed 09B/09C and the multi-node
+09D rollout are Pending at the user's request, not prerequisites for operating the
+current single-instance service. Phase 05 verification and 08B scanner/provider
+gates retain their existing status.
+
+Render Free supports one instance and can spin down after 15 minutes without
+inbound HTTP or WebSocket traffic. Background work therefore has no always-on
+latency guarantee: after wake/startup, workers resume eligible durable work from
+PostgreSQL. Clients reconnect, rejoin authorized rooms and recover messages/inbox
+through REST; in-memory presence/typing and rate buckets reset on process restart.
+Existing expiry, suppression and retry limits continue to apply. No keepalive
+service is planned to prevent Free spin-down.
+
+No Redis/Valkey, paid worker, broker dependency or distributed runtime mode is
+required for this deployment. Render Free Key Value has no disk persistence and
+is not selected as a durable broker. The 09B–09D checklists below are retained as
+future design and acceptance criteria; local multi-process experiments may be
+planned later but do not authorize implementation or paid provisioning.
+
+Sources: [Render scaling](https://render.com/docs/scaling),
+[Free limitations](https://render.com/docs/free),
+[Key Value persistence](https://render.com/docs/key-value#data-persistence),
+[WebSocket reconnects](https://render.com/docs/websocket).
+
+### Current single-instance staging follow-up
+
+- [x] Verify `/health`, `/livez`, `/readyz` and public metrics denial on Render Free.
+      One public pass on 2026-10-05 also confirmed `/readyz/realtime`; all four
+      probes returned 200 and `/metrics` returned 404. This was a warm read-only
+      check of `https://gogo-dl.onrender.com`, not redeploy/cold-start evidence.
+- [ ] Exercise authorized message send/history and mention/inbox recovery before
+      and after redeploy or observed spin-down/wake; record cold-start/worker lag.
+- [ ] Verify reconnect/rejoin behavior, current membership authorization and
+      shutdown within Render's termination window; state resets are expected.
+- [ ] Confirm DB migrations and durable worker retry/cleanup recover after restart;
+      observe backlog/dead letters and retained broker intents. Broker work stays
+      unconsumed until 09B; do not acknowledge or discard it as if delivered.
+- [ ] Document manual failure/DB recovery and single-instance capacity observations;
+      Free uptime, notification latency and multi-instance SLOs remain unpromised.
+
+### Free verification implementation — `ft/phase-9-free`
+
+The [operation runbook](../docs/render-free-operations.md) and `cmd/smoke` provide
+an on-demand, bounded pass over probes/public metrics denial, optional authorized
+profile/history/inbox checks, expected recovery IDs and two independent WS joins.
+No new application configuration, dependency or hosted service is introduced.
+Access tokens are read from files outside the repository and sent in headers;
+output contains check names/status/timing without bodies or credentials.
+
+A dedicated PostgreSQL regression test reconstructs the connection pool and
+notification worker after an abandoned lease, reclaims eligible work and verifies
+one inbox effect/private intent. This is local recovery evidence; the staging
+recovery checklist above stays open until observed on Render. Distributed gates remain
+Pending and are not completed by Free verification tooling.
+
+### Free verification results — 2026-10-05
+
+- Full `go test -race -count=1 -timeout=180s ./...`, `go vet ./...`, and
+  `make build` pass with Go 1.23.12 and dedicated local PostgreSQL 16 `_test`
+  databases. `git diff --check` passes; golangci-lint is unavailable.
+- A real production-mode server on a separate disposable local database passed
+  all ten smoke checks, including expected message/inbox IDs and both WS joins,
+  before and after a SIGTERM/restart. The connected socket received 1001 and
+  the stopped process exited within 10 ms in this local observation.
+- A regression test first reproduced the smoke reader losing a snapshot batched
+  after other events in one frame. The reader now decodes every envelope with
+  bounded frame size/event count/deadline; invalid and rejected joins fail safely.
+- No authenticated hosted mutations, Render redeploy, natural spin-down/wake,
+  R2 cleanup/provider check or browser reconnect verification was performed.
+  Local restart evidence does not establish those staging gates or an SLA.
+
+### Future distributed execution order
 
 Four reviewable slices: **09A may start before Phase 8**; horizontal production
 scaling requires 09B–09D. Phase 5 verification remains Pending. Phase 6/7 app code is now integrated
@@ -19,8 +97,8 @@ from `develop`; distributed lifecycle producer gates remain pending.
 - 09C: shared presence/typing, distributed limits and authorization/privacy gates.
 - 09D: two-instance staging, measured load/fault/DR evidence and gated rollout.
 
-Broker/store/provider, telemetry backend, retention and load limits are pending
-implementation-start decisions. Proposed baseline: one Redis service for Streams,
+For future distributed work, broker/store/provider, telemetry backend, retention
+and load limits are pending implementation-start decisions. Proposed baseline: one Redis-compatible service for Streams,
 leases and guards; NATS/Kafka are ADR alternatives, not extra required services.
 09A adds pinned Prometheus/OpenTelemetry libraries for actual runtime wiring.
 No external infrastructure is provisioned; Redis/provider decisions remain pending.
@@ -42,7 +120,7 @@ No external infrastructure is provisioned; Redis/provider decisions remain pendi
 ## 3. 09A — Observability and one-instance operation
 
 **Slice status: Done.** Implementation, local integration and operational artifacts
-are verified. Phase 8 work is reserved for a separate session. Provider provisioning,
+are verified. Phase 8 outbox and 08C are now integrated. Provider provisioning,
 staging rollout and sustained production SLO evidence remain release work in 09D.
 
 Expected files: middleware/httpserver/database/ws/config, `cmd/server/main.go`,
@@ -69,6 +147,10 @@ Gate: probe semantics, exporter failure, redaction/cardinality, concurrent
 disconnect/drain and race tests pass. Telemetry loss does not fail business writes.
 
 ## 4. 09B — Durable relay and fanout
+
+**Slice status: Pending — deferred for Render Free.** Resume after an explicit
+distributed implementation decision and a broker ADR. Production scaling requires
+a paid multi-instance host and verified broker persistence/recovery.
 
 Expected files: Phase 8 outbox repository/workers, concrete broker adapter,
 chat/user services, ws/config/startup, additive sequence/progress migration if
@@ -106,6 +188,9 @@ insertion rolls back the mutation.
 
 ## 5. 09C — Shared state and privacy
 
+**Slice status: Pending — deferred for Render Free.** Existing process-local state
+and limits remain the current contract.
+
 Expected files: shared-state adapter/scripts, WS state/authorization workers,
 limiter middleware/config, room/user repositories and tests. Hub still owns maps;
 all DB/store/broker work is outside its loop.
@@ -137,6 +222,10 @@ account deletion and missed-control privacy pass. Local-only fallback or eventua
 timer-only revocation fails this gate.
 
 ## 6. 09D — Verification and rollout evidence
+
+**Slice status: Pending — distributed rollout deferred for Render Free.** The
+current one-instance staging checks are listed in section 1; the following
+multi-node gates apply only when distributed deployment is resumed.
 
 Use disposable owned PostgreSQL and broker/store fixtures; no personal secrets or
 application data. Destructive cleanup is limited to those explicit fixtures.
@@ -288,7 +377,8 @@ a brief local smoke measurement, not a capacity result. No 09A commit or push wa
 
 The independent 09A slice is Done. Phase 8 implementation is out of this session;
 09B/09C remain unimplemented and depend on its outbox work. Phase 9 overall stays
-In progress until those slices and 09D release gates are verified.
+Pending under the Render Free decision until distributed work is resumed and those
+slices and 09D release gates are verified.
 
 Two additional failures were reproduced before their fixes:
 
