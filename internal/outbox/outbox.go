@@ -102,7 +102,7 @@ func (s *Store) Claim(ctx context.Context, purpose string) (*Job, error) {
 		return nil, fmt.Errorf("outbox lease ID: %w", err)
 	}
 	var job Job
-	projection := `c.event_id,c.lease_token,o.attachment_id,COALESCE(k.object_key,'') AS object_key`
+	projection := `c.event_id,c.lease_token,COALESCE(o.attachment_id,0) AS attachment_id,COALESCE(k.object_key,'') AS object_key`
 	if purpose == Notification {
 		projection = `c.event_id,c.lease_token,COALESCE(o.attachment_id,0) AS attachment_id,COALESCE(k.object_key,'') AS object_key,
         o.room_id,o.user_id,o.message_id,o.membership_generation`

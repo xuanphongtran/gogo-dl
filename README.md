@@ -523,3 +523,33 @@ old notifications. The private feed and preferences are available at
 and `/api/v1/rooms/:id/notification-preferences`. Inbox rows contain only room
 and message references. A worker emits a best-effort user-only WebSocket
 `notification` event after durable insertion; REST remains the recovery path.
+
+
+The following notification endpoints require `Authorization: Bearer <access_token>`:
+
+| Method | Path | Request / response |
+|---|---|---|
+| GET | `/api/v1/users/me/notifications` | `before` positive ID, `limit` 1–100 (default 20), `unread_only` boolean; returns `notifications` and nullable `next_before` |
+| PUT | `/api/v1/users/me/notifications/:id/read` | No body; returns the owned notification with stable `read_at` on retries |
+| GET / PUT | `/api/v1/users/me/notification-preferences` | Default `mentions_enabled=true`; PUT requires a boolean, including false |
+| GET / PUT | `/api/v1/rooms/:id/notification-preferences` | Default `muted=false`; PUT requires a boolean, including false; current membership required |
+
+Mention IDs must be positive, distinct, and limited to 10; normalized IDs are
+sorted. Self mentions remain on the message but generate no notification.
+`Idempotency-Key` must contain 16–128 printable ASCII bytes; reusing a retained key
+with different normalized room/content/recipient data returns `409`. Retries
+recheck current room authorization. Content remains required; `attachment_ids`
+are reserved and rejected with `503` while scanner admission is closed.
+
+Notification DTOs contain `id`, `kind`, `room_id`, `message_id`, `created_at`,
+nullable `read_at`, and `availability` (`available` or `deleted`). Other users'
+notification IDs return `404`. The feed expires after 30 days; marking a
+notification read does not advance the room read cursor. Preferences are evaluated
+at delivery: disabled/muted delivery is suppressed permanently without backfill.
+A removed membership clears its inbox and room preference; rejoining starts with
+room defaults. Existing rows may show a deleted reference without exposing text.
+
+Inbox insertion, its private `notification.created` outbox intent, and the mention
+lease acknowledgement commit together. Broker progress remains separate and awaits
+Phase 9B; no distributed relay is enabled by Phase 8C. The current deployment
+continues to use one application instance and REST recovery for dropped WS events.
