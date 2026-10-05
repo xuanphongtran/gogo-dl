@@ -2,7 +2,7 @@
 
 **Priority:** P2
 
-**Status:** In progress — 08A Done locally; 08B R2 foundation implemented; 08C implemented locally; scanner/provider and release verification gates pending
+**Status:** In progress — 08A Done locally; 08B R2 foundation implemented; 08C Done locally; scanner/provider and release verification gates pending
 
 **Specification:** [Phase 8 SPEC](../spec/08-rich-messaging.md)
 
@@ -20,7 +20,7 @@ Defaults: PostgreSQL `simple` search, private Cloudflare R2 with create-only key
 fail-closed scan, durable in-app mention feed. Provider/cost/scanner capability,
 retention and measured quotas are readiness decisions. External email/push,
 file-content/global search and attachment-only sends are outside scope. This plan
-provisions nothing. 08A is implemented and locally verified; 08B foundation is implemented; full attachments remain pending and 08C is implemented locally.
+provisions nothing. 08A is implemented and locally verified; 08B foundation is implemented; full attachments remain pending and 08C is Done locally.
 
 ## 2. Inspect and establish contracts
 
@@ -150,9 +150,9 @@ migration pairs; private WS event/tests and API docs.
       cannot double-create rows or consume another purpose's work.
 - [x] Best-effort user-only WS after commit, REST recovery, no copied deleted text;
       leave removes old feed, room read cursor behavior remains unchanged.
-- [x] Minimal real delivery interface/in-app adapter/test fake; external channels
+- [x] PostgreSQL in-app adapter and typed repository test fake; external channels
       need provider decisions and are not implemented speculatively.
-- [ ] Update README/Swagger; the AsyncAPI assets now integrated from `develop`;
+- [x] Update README/Swagger; the AsyncAPI assets now integrated from `develop`;
       document required content, optional send arrays and retry-key retention.
 
 Gate: membership/leave/rejoin/preference races, feed ownership, safe deleted
@@ -199,7 +199,7 @@ shutdown. Phase 9 adds broker and distributed load/failure gates.
 - [ ] HTTP/WS docs/config/retention/runbooks synchronized.
 - [ ] Review findings fixed; scan/capacity/access-window limitations disclosed.
 
-08A is Done locally. 08B foundation is implemented; scanner/provider release gates remain pending. 08C mention capture, generation-scoped preferences, private inbox, retry keys, notification outbox delivery, REST recovery and user-only WebSocket delivery are implemented locally; dedicated race/DB verification remains pending.
+08A is Done locally. 08B foundation is implemented; scanner/provider release gates remain pending. 08C is Done locally after dedicated PostgreSQL/race verification and review fixes; Phase 05 and staging rollout remain separate release gates.
 
 ### 08B foundation verification — 2026-10-02
 
@@ -218,3 +218,41 @@ shutdown. Phase 9 adds broker and distributed load/failure gates.
 - `golangci-lint` and `govulncheck` are not installed; these checks were not run.
 - R2 staging credentials/browser CORS tests and scanner are unavailable; provider
   immutability/grace/scan/promotion proofs remain pending. No commit/push/deployment.
+
+
+### 08C completion verification — 2026-10-05
+
+Continued on `ft/phase-8c` after implementation and CI fixes were merged into
+develop. Go 1.23.12 and a dedicated PostgreSQL 16.15 `_test` database were used;
+notification tests own private schemas to avoid racing migration tests in another
+package. Personal Neon credentials/database were not used.
+
+Review fixes: worker/preference/account paths now lock user → room → membership
+→ global preference → room preference consistently; the source message is locked
+before effect insertion. Deleted accounts/rooms/messages and stale generations
+terminally suppress. Retention shares the bounded worker timeout; claim/retry
+failures are logged. Inbox effect, private `notification.created` intent, and
+lease ACK commit atomically; duplicate recovery emits no second intent or WS.
+Broker claims accept content-free intents without an attachment reference.
+HTTP IDs are parsed strictly; all six notification endpoints and retry headers
+are included in regenerated Swagger. AsyncAPI source/assets remain synchronized.
+
+Evidence:
+
+- Original worker reproduced the preference lock-order failure using a Go source
+  overlay; the regression passes with the corrected implementation.
+- Dedicated tests cover 9→10→9→10 migration/member backfill, atomic send/invalid
+  recipient rollback, concurrent retry, conflict and expiry, unauthorized retry,
+  self-mention suppression, global/room preferences, membership generation reset,
+  feed ownership/idempotent read, deletion/rejoin privacy and 30-day retention.
+- Worker tests cover concurrent delivery, independent broker progress, duplicate
+  effects, stale lease rollback/reclaim, suppression after account/room/message
+  deletion, disabled/muted/rejoined recipients, and preference lock ordering.
+- HTTP tests cover false/missing/null/wrong boolean, malformed/overflow IDs,
+  invalid cursors/page bounds and invalid unread filters.
+- `go test -race -count=1 -timeout=180s ./...` with `TEST_DATABASE_URL`,
+  `go vet ./...`, `make build`, `make docs`, gofmt and `git diff --check`: passed.
+- `golangci-lint` is unavailable. Production/Render staging smoke and Phase 05
+  dedicated verification remain pending; this does not complete those gates.
+- No dependency, historical migration, production configuration or external
+  deployment change is required. Broker relay remains Phase 09B work.

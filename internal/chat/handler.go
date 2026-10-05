@@ -234,6 +234,8 @@ func (h *Handler) ListMessages(c *gin.Context) {
 // @Security     BearerAuth
 // @Param        id    path  int64              true  "Room ID"
 // @Param        body  body  SendMessageRequest true  "Message payload"
+// @Param        Idempotency-Key header string false "Required for mentions; 16–128 printable ASCII bytes, retained for 24 hours"
+// @Failure      409 {object} apperror.AppError "Retry key reused for a different normalized request"
 // @Success      201  {object} Message
 // @Failure      400  {object} apperror.AppError "Invalid request, including content exceeding the message limit"
 // @Failure      401  {object} apperror.AppError

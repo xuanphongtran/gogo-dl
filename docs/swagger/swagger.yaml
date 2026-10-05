@@ -192,6 +192,10 @@ definitions:
     type: object
   internal_chat.Message:
     properties:
+      attachments:
+        items:
+          type: object
+        type: array
       content:
         type: string
       created_at:
@@ -206,6 +210,10 @@ definitions:
         x-nullable: true
       id:
         type: integer
+      mention_user_ids:
+        items:
+          type: integer
+        type: array
       revision:
         minimum: 1
         type: integer
@@ -314,6 +322,10 @@ definitions:
         maxLength: 4000
         minLength: 1
         type: string
+      mention_user_ids:
+        items:
+          type: integer
+        type: array
     required:
     - content
     type: object
@@ -341,6 +353,61 @@ definitions:
     properties:
       ready:
         type: boolean
+    type: object
+  internal_notification.Feed:
+    properties:
+      next_before:
+        type: integer
+        x-nullable: true
+      notifications:
+        items:
+          $ref: '#/definitions/internal_notification.Notification'
+        type: array
+    type: object
+  internal_notification.GlobalPreferences:
+    properties:
+      mentions_enabled:
+        type: boolean
+    type: object
+  internal_notification.GlobalRequest:
+    properties:
+      mentions_enabled:
+        type: boolean
+    required:
+    - mentions_enabled
+    type: object
+  internal_notification.Notification:
+    properties:
+      availability:
+        enum:
+        - available
+        - deleted
+        type: string
+      created_at:
+        type: string
+      id:
+        type: integer
+      kind:
+        type: string
+      message_id:
+        type: integer
+      read_at:
+        type: string
+        x-nullable: true
+      room_id:
+        type: integer
+    type: object
+  internal_notification.RoomPreferences:
+    properties:
+      muted:
+        type: boolean
+    type: object
+  internal_notification.RoomRequest:
+    properties:
+      muted:
+        type: boolean
+    required:
+    - muted
     type: object
   internal_user.LoginRequest:
     properties:
@@ -1205,6 +1272,11 @@ paths:
         required: true
         schema:
           $ref: '#/definitions/internal_chat.SendMessageRequest'
+      - description: Required for mentions; 16–128 printable ASCII bytes, retained
+          for 24 hours
+        in: header
+        name: Idempotency-Key
+        type: string
       produces:
       - application/json
       responses:
@@ -1226,6 +1298,10 @@ paths:
             $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
         "404":
           description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "409":
+          description: Retry key reused for a different normalized request
           schema:
             $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
         "413":
@@ -1413,6 +1489,95 @@ paths:
       summary: Search room messages
       tags:
       - messages
+  /api/v1/rooms/{id}/notification-preferences:
+    get:
+      parameters:
+      - description: Room ID
+        in: path
+        minimum: 1
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_notification.RoomPreferences'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+      security:
+      - BearerAuth: []
+      summary: Get my room notification preference
+      tags:
+      - notifications
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Room ID
+        in: path
+        minimum: 1
+        name: id
+        required: true
+        type: integer
+      - description: Required muted boolean; false is accepted
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_notification.RoomRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_notification.RoomPreferences'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+      security:
+      - BearerAuth: []
+      summary: Set my room notification preference
+      tags:
+      - notifications
   /api/v1/rooms/{id}/ownership:
     post:
       consumes:
@@ -1724,6 +1889,146 @@ paths:
       summary: List my invitations
       tags:
       - invitations
+  /api/v1/users/me/notification-preferences:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_notification.GlobalPreferences'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+      security:
+      - BearerAuth: []
+      summary: Get my global notification preference
+      tags:
+      - notifications
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Required mentions_enabled boolean; false is accepted
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_notification.GlobalRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_notification.GlobalPreferences'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+      security:
+      - BearerAuth: []
+      summary: Set my global notification preference
+      tags:
+      - notifications
+  /api/v1/users/me/notifications:
+    get:
+      parameters:
+      - description: Return IDs below this cursor
+        in: query
+        minimum: 1
+        name: before
+        type: integer
+      - default: 20
+        description: Page size
+        in: query
+        maximum: 100
+        minimum: 1
+        name: limit
+        type: integer
+      - description: Return unread notifications only
+        in: query
+        name: unread_only
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_notification.Feed'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+      security:
+      - BearerAuth: []
+      summary: List my notification inbox
+      tags:
+      - notifications
+  /api/v1/users/me/notifications/{id}/read:
+    put:
+      parameters:
+      - description: Notification ID
+        in: path
+        minimum: 1
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_notification.Notification'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
+      security:
+      - BearerAuth: []
+      summary: Mark my notification read
+      tags:
+      - notifications
   /health:
     get:
       produces:
