@@ -45,12 +45,17 @@ Sources: [Render scaling](https://render.com/docs/scaling),
       One public pass on 2026-10-05 also confirmed `/readyz/realtime`; all four
       probes returned 200 and `/metrics` returned 404. This was a warm read-only
       check of `https://gogo-dl.onrender.com`, not redeploy/cold-start evidence.
-- [ ] Exercise authorized message send/history and mention/inbox recovery before
-      and after redeploy or observed spin-down/wake; record cold-start/worker lag.
-- [ ] Verify reconnect/rejoin behavior, current membership authorization and
-      shutdown within Render's termination window; state resets are expected.
-- [ ] Confirm DB migrations and durable worker retry/cleanup recover after restart;
-      observe backlog/dead letters and retained broker intents. Broker work stays
+- [x] Exercise authorized message send/history and mention/inbox recovery before
+      and after redeploy. On 2026-10-12 room 4 retained message 11 and notification
+      1; both post-deploy WS joins passed after renewing the test access token.
+- [ ] Observe natural spin-down/wake and record cold-start/isolated worker lag.
+- [x] Verify staging member reconnect/rejoin through two independent WS joins.
+- [ ] Verify current membership revocation and shutdown within Render's
+      termination window; the live observer saw 1006 instead of expected 1001.
+- [x] Confirm startup migrations after redeploy from the supplied Render log:
+      `database connected` and `migrations up to date` at 08:42:33 UTC.
+- [ ] Confirm durable worker retry/cleanup recover after restart; observe
+      backlog/dead letters and retained broker intents. Broker work stays
       unconsumed until 09B; do not acknowledge or discard it as if delivered.
 - [ ] Document manual failure/DB recovery and single-instance capacity observations;
       Free uptime, notification latency and multi-instance SLOs remain unpromised.
@@ -85,6 +90,53 @@ Pending and are not completed by Free verification tooling.
 - No authenticated hosted mutations, Render redeploy, natural spin-down/wake,
   R2 cleanup/provider check or browser reconnect verification was performed.
   Local restart evidence does not establish those staging gates or an SLA.
+
+### Render Free staging baseline — 2026-10-12
+
+`origin/develop` includes the Free operations work through merge commit `20f20a0`
+(PR #20). The supplied Render deployment log confirms checkout of
+`20f20a0a818c9cac6038c7dce54e79e95eb307cd` from develop, Go 1.27.1, build
+`CGO_ENABLED=0 go build -o gogo-dl ./cmd/server`, and start `./gogo-dl`.
+Database connectivity and migrations succeeded at 08:42:33 UTC; the service was
+Live at 08:42:38 UTC at `https://gogo-dl.onrender.com`. Direct Render API access
+is unavailable; these deploy details come from the user-supplied log.
+
+- One public smoke pass returned 200 for all four probes and 404 for public
+  metrics. Observed probe request durations were 93–357 ms; no natural spin-down
+  or cold-start observation was established.
+- Created two dedicated staging test accounts and one private test room, invited
+  the recipient, accepted, sent a mention and retried the same idempotency key.
+  Both sends returned message ID 11. The recipient's feed contained one matching
+  notification (ID 1) in room 4. The observed interval from initial send request
+  through retry and feed observation was 12,546 ms; this includes HTTP time and
+  is not an isolated worker-lag measurement.
+- The authenticated smoke pass succeeded for profile, inbox/history expected IDs,
+  both WS joins and all public probes. WS used Authorization headers and the
+  configured origin `https://chat-sb.xuanphong.io.vn`.
+- Additional checks passed: missing/invalid token returns 401 for history,
+  the owner's feed does not expose the recipient's notification, login/refresh
+  succeeds and the refreshed token resolves the same recipient identity.
+- A bounded live socket observer joined room 4, then saw abnormal close 1006
+  after 106,888 ms. No 1001 close frame was received; the graceful-close check
+  failed. A subsequent authenticated smoke pass recovered the same message/inbox
+  IDs and both WS joins. Redeploy timing/instance attribution and signal/exit
+  behavior require Render logs; 1006 alone does not identify the failing layer.
+  Reviewed application signal/drain/writer ownership and
+  [Render shutdown guidance](https://render.com/docs/websocket#handling-instance-shutdown).
+  No runtime fix was made without this missing evidence.
+- After the supplied successful redeploy log, renewed the test access token
+  using login and ran a fresh authenticated smoke pass: all ten checks passed,
+  including message 11, notification 1 and both WS joins. This verifies durable
+  recovery after redeploy, not delivery of abandoned work or a cold-start SLA.
+- The deployed app reports `env=development`, Gin debug mode and public Swagger/
+  AsyncAPI routes. This differs from the documented `APP_ENV=production` profile.
+  Setting production enables Gin release mode and disables both documentation
+  routes; changing the hosted environment requires the user's Render Dashboard.
+- The supplied log shows startup only, not the old instance's SIGTERM/drain/exit.
+  Actual shutdown close/drain, natural sleep/wake, database backlog/dead letters,
+  R2 cleanup and browser reconnect remain pending.
+  Test fixtures are retained for the recovery comparison. Credentials and tokens
+  remain in private temporary files outside Git; no hosted record was deleted.
 
 ### Future distributed execution order
 

@@ -45,8 +45,11 @@ Phase 08 is `In progress`: 08A search is implemented and verified locally on
 `ft/phase-8a`, including PostgreSQL migration/index and authorization tests.
 08B R2 foundation is implemented; scanner/provider gates remain pending. 08C mentions/inbox is Done locally after dedicated PostgreSQL/race verification and review fixes on 2026-10-05; staging and Phase 05 remain release gates.
 Phase 09 is `Pending` under the user's Render Free decision on 2026-10-05.
-09A is `Done` locally; one-instance Free staging/reconnect/worker recovery checks
-remain follow-up work. Distributed 09B/09C and multi-instance 09D rollout are
+09A is `Done` locally. The Free operations work is merged into develop; public
+probes and authenticated REST/WS staging baseline passed on 2026-10-12.
+REST/WS recovery after a logged redeploy also passed. Cold-start, abandoned worker
+recovery/backlog, membership revocation and staging drain remain follow-up work;
+the live socket observer received 1006 rather than the expected 1001. Distributed 09B/09C and multi-instance 09D rollout are
 deferred. No paid broker or multi-instance service is required for current use.
 The preserved distributed checklists apply when scaling is explicitly resumed.
 See its plan for the Free deployment scope and exact future gates.
