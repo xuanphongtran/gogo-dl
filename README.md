@@ -553,3 +553,12 @@ Inbox insertion, its private `notification.created` outbox intent, and the menti
 lease acknowledgement commit together. Broker progress remains separate and awaits
 Phase 9B; no distributed relay is enabled by Phase 8C. The current deployment
 continues to use one application instance and REST recovery for dropped WS events.
+
+## Render Free operation checks
+
+Run `make smoke SMOKE_ARGS='-url https://gogo-dl.onrender.com'` for one bounded
+probe pass. Optional token-file/room flags check authorized REST recovery and two
+WebSocket joins without printing tokens or response bodies. See the
+[Free operation runbook](docs/render-free-operations.md) for before/after redeploy
+checks, worker backlog inspection and rollback. Distributed Phase 09B–09D remain
+deferred while running one Free instance.

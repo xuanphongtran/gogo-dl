@@ -1,6 +1,6 @@
 # 09 — Scale and Observability Specification
 
-**Status:** In progress — 09A Done; 09B–09D and external rollout pending
+**Status:** Pending — 09A Done; distributed 09B–09D deferred for Render Free
 
 **Priority:** P2
 
@@ -10,14 +10,35 @@
 
 ## 1. Outcome and boundaries
 
+### Current deployment decision — 2026-10-05
+
+The user keeps Render Free: one Go Web Service instance, Neon PostgreSQL, local
+Hub fanout/state/limits and the existing durable notification/cleanup workers.
+09A is Done locally. 09B/09C and multi-node 09D deployment are deferred; the
+following distributed contracts are future requirements, not current guarantees.
+One-instance staging follow-up is tracked in the execution plan. No broker,
+Redis dependency or paid service is required by this decision.
+
+Free spin-down/cold starts are accepted. Workers resume eligible PostgreSQL work
+when the process runs, subject to expiry, suppression and retry bounds; no
+always-on worker or notification latency SLA is claimed. WS clients reconnect,
+rejoin and use REST recovery after restart; ephemeral process state resets.
+The current Free deployment does not establish cross-instance delivery or SLOs.
+
+[Render scaling](https://render.com/docs/scaling),
+[Free service limits](https://render.com/docs/free).
+
+### Future distributed outcome
+
 Operate multiple application instances without splitting authorized room delivery,
 personal events, presence or admission limits. Diagnose failures with bounded
 telemetry, explicit recovery and measured staging capacity.
 
 Today each process has one Hub event loop; room sockets, presence, typing,
 admission and rate buckets are local. PostgreSQL is durable, broadcasts are best
-effort, and startup applies embedded migrations. This specification proposes
-changes: no shared infrastructure, new dependency or load result exists yet.
+effort, and startup applies embedded migrations. 09A telemetry dependencies and
+the local single-instance smoke baseline are implemented; shared broker/state
+infrastructure and distributed capacity evidence do not exist yet.
 
 Scope: correlation/telemetry, probes/drain, durable relay, cross-instance delivery
 and revocation, shared ephemeral state/limits, fault tests and rollout gates.
@@ -39,11 +60,11 @@ Phase 5 remains Pending for verification; review fixes in current `main` do not
 complete that gate. Phase 6/7 app code and AsyncAPI assets are now integrated
 from `develop`; distributed lifecycle producer verification remains a 09B gate.
 
-09A implementation and local verification are complete. Phase 8 will be implemented
-in a separate session. Distributed contracts below remain target behavior for
+09A implementation and local verification are complete. Phase 8 outbox and 08C
+are integrated; 08B scanner/provider gates remain pending. Distributed contracts below remain target behavior for
 09B–09D; provider rollout and sustained SLO evidence are separate release gates.
 
-## 3. Proposed operational baseline
+## 3. Future distributed operational baseline
 
 Propose one Redis service for Streams fanout plus short-lived leases and atomic
 rate/admission decisions. Provider access, cost, persistence/failover behavior,
@@ -367,7 +388,7 @@ store budget from measurements. Verify provider network/persistence/shutdown
 constraints at implementation time; Render Free single-instance staging does not
 prove production scale. No production provisioning/access is requested here.
 
-### 09D — Rollout and recovery evidence
+### 09D — Future distributed rollout and recovery evidence
 
 Rollout: 09A one instance → expand/outbox one instance → shadow consumers without
 double sends → one distributed instance → two staging nodes through privacy/load

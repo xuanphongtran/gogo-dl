@@ -302,6 +302,55 @@ func TestWorkerConcurrentDeliveryAndRetention(t *testing.T) {
 	}
 }
 
+func TestWorkerRecoversAfterConnectionAndWorkerRestart(t *testing.T) {
+	f := newMentionFixture(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	var schema string
+	if err := f.db.GetContext(ctx, &schema, `SELECT current_schema()`); err != nil {
+		t.Fatal(err)
+	}
+	// The old process claimed but never committed an effect. Expiry models its
+	// abandoned lease; only a replacement process may reclaim after expiry.
+	if _, err := f.db.ExecContext(ctx, `UPDATE domain_outbox_deliveries SET lease_until=clock_timestamp()-interval '1 second' WHERE event_id=$1 AND purpose='notification'`, f.job.EventID); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	u, err := url.Parse(os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := u.Query()
+	q.Set("search_path", schema)
+	u.RawQuery = q.Encode()
+	db, err := sqlx.ConnectContext(ctx, "postgres", u.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	restarted := NewWorker(db, outbox.NewStore(db), nil)
+	restarted.process(ctx)
+	restarted.process(ctx)
+	feed, err := NewService(NewRepository(db)).List(ctx, f.recipient, Query{})
+	if err != nil || len(feed.Notifications) != 1 || feed.Notifications[0].MessageID != f.message {
+		t.Fatalf("recovered feed=%v err=%v", feed, err)
+	}
+	var count int
+	if err := db.GetContext(ctx, &count, `SELECT count(*) FROM domain_outbox WHERE kind='notification.created'`); err != nil || count != 1 {
+		t.Fatalf("recovered intents=%d err=%v", count, err)
+	}
+	var state string
+	if err := db.GetContext(ctx, &state, `SELECT state FROM domain_outbox_deliveries WHERE event_id=$1 AND purpose='notification'`, f.job.EventID); err != nil || state != "done" {
+		t.Fatalf("recovered progress=%s err=%v", state, err)
+	}
+}
+
 func TestWorkerDoesNotLockPreferenceBeforeMembership(t *testing.T) {
 	f := newMentionFixture(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

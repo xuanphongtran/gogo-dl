@@ -14,7 +14,7 @@ MIGRATE_URL ?= $(shell grep DB_ $(ENV_FILE) 2>/dev/null | \
 MIGRATIONS_DIR := migrations
 
 # ── Phony targets ──────────────────────────────────────────────────────────────
-.PHONY: all run build clean test lint docs docs-asyncapi \
+.PHONY: all run build clean test lint docs docs-asyncapi smoke \
         migrate-up migrate-down migrate-create \
         deps tidy docker-up docker-down
 
@@ -54,6 +54,10 @@ tidy:
 ## test: Run all tests with race detector
 test:
 	go test -race -count=1 ./...
+
+## smoke: Run a single deployment check (SMOKE_ARGS='-url https://service.onrender.com')
+smoke:
+	go run ./cmd/smoke $(SMOKE_ARGS)
 
 ## lint: Run golangci-lint (install: https://golangci-lint.run/usage/install/)
 lint:

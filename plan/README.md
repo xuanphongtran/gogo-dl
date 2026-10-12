@@ -24,7 +24,7 @@ Within the same priority, lower sequence numbers should normally be completed fi
 | 06 | P1 | [Message lifecycle](./06-message-lifecycle.md) | Edit, delete, and consistent real-time message events | 03–05 | Done |
 | 07 | P1 | [Presence, typing, and read state](./07-presence-read-state.md) | Online state, typing indicators, and unread/read tracking | 03, 05 | Done |
 | 08 | P2 | [Search, attachments, and notifications](./08-rich-messaging.md) | Discoverable messages and richer asynchronous engagement | 05–07 | In progress |
-| 09 | P2 | [Scale and observability](./09-scale-observability.md) | Multi-instance delivery, metrics, tracing, and SLOs | 01–08 | In progress |
+| 09 | P2 | [Scale and observability](./09-scale-observability.md) | Single-instance observability complete; distributed scale deferred for Render Free | 01–08 | Pending |
 
 ## Verification record
 
@@ -44,12 +44,17 @@ Phase 06 schema migration remains before version 7 during deployment.
 Phase 08 is `In progress`: 08A search is implemented and verified locally on
 `ft/phase-8a`, including PostgreSQL migration/index and authorization tests.
 08B R2 foundation is implemented; scanner/provider gates remain pending. 08C mentions/inbox is Done locally after dedicated PostgreSQL/race verification and review fixes on 2026-10-05; staging and Phase 05 remain release gates.
-Phase 09 is `In progress`:
-09A is `Done` on `ft/phase-9a`; staging/provider and
-09B–09D distributed delivery, shared state and rollout gates remain pending.
-See its plan for exact checks and the local baseline.
+Phase 09 is `Pending` under the user's Render Free decision on 2026-10-05.
+09A is `Done` locally; one-instance Free staging/reconnect/worker recovery checks
+remain follow-up work. Distributed 09B/09C and multi-instance 09D rollout are
+deferred. No paid broker or multi-instance service is required for current use.
+The preserved distributed checklists apply when scaling is explicitly resumed.
+See its plan for the Free deployment scope and exact future gates.
 
 ## Phase 08–09 execution boundaries
+
+09B–09D below describe future distributed work, deferred while using Render Free.
+The active Phase 09 follow-up is single-instance staging verification in its plan.
 
 | Slice | Can begin with | Release gate |
 |---|---|---|

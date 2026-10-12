@@ -5,6 +5,27 @@ database. The application applies embedded SQL migrations before opening its
 HTTP listener. It needs no separate migration command or migration files at
 runtime.
 
+## Render Free deployment scope
+
+The current deployment choice is Render Free with one instance. Free web services
+cannot scale horizontally. Local WebSocket delivery, presence, typing and limits
+match this topology; Phase 09B/09C and the multi-node 09D rollout are deferred.
+The [Phase 9 plan](../plan/09-scale-observability.md) tracks single-instance staging
+checks and preserves future distributed requirements.
+
+Free spin-down and cold starts are accepted. Notification and cleanup workers run
+inside the web process and resume eligible PostgreSQL work after it wakes; they
+have no always-on latency guarantee. Clients reconnect/rejoin and recover durable
+messages/inbox through REST. No Redis broker or paid background worker is required.
+Do not use Free Key Value as a persistent broker: its data has no disk persistence.
+
+Use the [Free operation runbook](render-free-operations.md) and
+`make smoke` for bounded probe, REST recovery and reconnect verification.
+
+References: [Render scaling](https://render.com/docs/scaling),
+[Free services](https://render.com/docs/free),
+[Key Value persistence](https://render.com/docs/key-value#data-persistence).
+
 ## Before the first deploy
 
 1. Run `go test -race -count=1 ./...` and `go vet ./...` with Go available.
