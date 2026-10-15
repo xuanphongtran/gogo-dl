@@ -2,11 +2,13 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"regexp"
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/xuanphongtran/gogo-dl/pkg/apperror"
 )
 
 func TestRepositoryCreateOrGetInvitationRefreshesRetryTimestamp(t *testing.T) {
@@ -16,6 +18,10 @@ func TestRepositoryCreateOrGetInvitationRefreshesRetryTimestamp(t *testing.T) {
 	retryUpdatedAt := createdAt.Add(2 * time.Hour)
 
 	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id FROM users WHERE id IN ($1, $2) ORDER BY id FOR KEY SHARE`)).WithArgs(int64(7), int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(7).AddRow(42))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id FROM rooms WHERE id = $1 FOR UPDATE`)).
+		WithArgs(int64(10)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(10))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT EXISTS (SELECT 1 FROM room_members WHERE room_id = $1 AND user_id = $2)")).
 		WithArgs(int64(10), int64(42)).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
@@ -69,6 +75,12 @@ func TestRepositoryRespondInvitationReportsCreatedMembership(t *testing.T) {
 	updatedAt := createdAt.Add(time.Hour)
 
 	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id FROM users WHERE id = $1 FOR KEY SHARE`)).WithArgs(int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(42))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id FROM rooms
+  WHERE id = (SELECT room_id FROM room_invitations WHERE id = $1 AND invitee_id = $2)
+  FOR UPDATE`)).WithArgs(int64(91), int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(10))
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT i.id, i.room_id, r.name AS room_name, i.invitee_id, i.invited_by,
 	       i.status, i.created_at, i.updated_at, i.responded_at
 	FROM room_invitations i
@@ -112,6 +124,12 @@ func TestRepositoryRespondInvitationDoesNotReportDuplicateMembership(t *testing.
 	createdAt := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 
 	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id FROM users WHERE id = $1 FOR KEY SHARE`)).WithArgs(int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(42))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id FROM rooms
+  WHERE id = (SELECT room_id FROM room_invitations WHERE id = $1 AND invitee_id = $2)
+  FOR UPDATE`)).WithArgs(int64(91), int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(10))
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT i.id, i.room_id, r.name AS room_name, i.invitee_id, i.invited_by,
 	       i.status, i.created_at, i.updated_at, i.responded_at
 	FROM room_invitations i
@@ -122,9 +140,9 @@ func TestRepositoryRespondInvitationDoesNotReportDuplicateMembership(t *testing.
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "room_id", "room_name", "invitee_id", "invited_by", "status", "created_at", "updated_at", "responded_at",
 		}).AddRow(int64(91), int64(10), "engineering", int64(42), int64(7), InvitationAccepted, createdAt, createdAt, createdAt))
-	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO room_members (room_id, user_id, role) VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING`)).
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT EXISTS (SELECT 1 FROM room_members WHERE room_id = $1 AND user_id = $2)`)).
 		WithArgs(int64(10), int64(42)).
-		WillReturnResult(sqlmock.NewResult(0, 0))
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 	mock.ExpectCommit()
 
 	_, membershipCreated, err := repo.RespondInvitation(context.Background(), 91, 42, InvitationAccepted)
@@ -146,6 +164,10 @@ func TestRepositoryCreateOrGetInvitationRefreshesAcceptedMemberTimestamp(t *test
 	respondedAt := createdAt.Add(2 * time.Hour)
 
 	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id FROM users WHERE id IN ($1, $2) ORDER BY id FOR KEY SHARE`)).WithArgs(int64(7), int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(7).AddRow(42))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id FROM rooms WHERE id = $1 FOR UPDATE`)).
+		WithArgs(int64(10)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(10))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT EXISTS (SELECT 1 FROM room_members WHERE room_id = $1 AND user_id = $2)")).
 		WithArgs(int64(10), int64(42)).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
@@ -187,5 +209,34 @@ func TestRepositoryCreateOrGetInvitationRefreshesAcceptedMemberTimestamp(t *test
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("repository expectations: %v", err)
+	}
+}
+
+func TestRepositoryAcceptedInvitationCannotRestoreRemovedMembership(t *testing.T) {
+	repo, mock := newRepositoryTest(t)
+	now := time.Now()
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id FROM users WHERE id = $1 FOR KEY SHARE`)).WithArgs(int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(42))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id FROM rooms
+  WHERE id = (SELECT room_id FROM room_invitations WHERE id = $1 AND invitee_id = $2)
+  FOR UPDATE`)).WithArgs(int64(91), int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(10))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT i.id, i.room_id, r.name AS room_name, i.invitee_id, i.invited_by,
+        i.status, i.created_at, i.updated_at, i.responded_at
+ FROM room_invitations i
+ JOIN rooms r ON r.id = i.room_id
+ WHERE i.id = $1 AND i.invitee_id = $2
+ FOR UPDATE`)).WithArgs(int64(91), int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "room_id", "room_name", "invitee_id", "invited_by", "status", "created_at", "updated_at", "responded_at"}).AddRow(91, 10, "private", 42, 7, InvitationAccepted, now, now, now))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT EXISTS (SELECT 1 FROM room_members WHERE room_id = $1 AND user_id = $2)`)).WithArgs(int64(10), int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+	mock.ExpectRollback()
+	invitation, created, err := repo.RespondInvitation(context.Background(), 91, 42, InvitationAccepted)
+	if !errors.Is(err, apperror.ErrInvitationState) || invitation != nil || created {
+		t.Fatalf("old acceptance: invitation=%+v created=%v err=%v", invitation, created, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -153,6 +153,14 @@ Profile updates accept an avatar URL only when it is an absolute `http://` or
 
 Invitation actions use `GET /api/v1/users/me/invitations`, `POST /api/v1/invitations/:id/accept`, and `POST /api/v1/invitations/:id/decline`. Public rooms can be discovered and joined by authenticated users; private rooms require an accepted invitation. Message history and WebSocket subscriptions require current membership.
 
+Re-inviting a removed member creates a new `pending` invitation with a new ID.
+The invitee must explicitly accept that invitation before regaining private-room
+access. Repeated manager invites reuse the current pending invitation. Replaying
+an older `accepted` invitation cannot recreate missing membership and returns
+409 (`invitation is no longer pending`); acceptance retries remain successful while
+membership exists. Rejoining creates a fresh membership generation, so previous
+mention/inbox records do not reappear.
+
 Leaving a public room returns `204` even when the caller is no longer a member,
 so retries are safe. A private room without membership, or a missing room,
 returns `404`. Owners must transfer ownership before leaving (`409`).
@@ -439,6 +447,11 @@ Clients should proactively refresh before the access token expires (`expires_at`
 - If an account is deleted, authored message history is retained with a nullable `user_id` and the username `[deleted user]`.
 - WebSocket upgrades require an exact configured Origin and are subject to global/per-user connection admission and per-connection frame limits.
 - Invalid JSON/request semantics return stable `invalid request` errors; oversized HTTP bodies return `request body too large`, and exhausted limiters return `rate limit exceeded` with `Retry-After`.
+- Allowed frontend origins may send `Authorization`, `Content-Type` and
+  `Idempotency-Key`; preflight also retains `Origin`. Responses expose
+  `Content-Length`, `Retry-After` and `X-Request-ID` to browser JavaScript.
+  Keep the same idempotency key and immutable payload when explicitly retrying
+  a message whose response was lost. Unconfigured origins remain denied.
 
 ## Observability and shutdown
 
