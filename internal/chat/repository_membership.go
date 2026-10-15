@@ -230,6 +230,24 @@ func (r *postgresRepository) CreateOrGetInvitation(ctx context.Context, roomID, 
 		return nil, false, opErr
 	}
 
+	// Account deletion locks users before cascading into rooms/memberships.
+	var users []int64
+	if err := tx.SelectContext(ctx, &users, `SELECT id FROM users WHERE id IN ($1, $2) ORDER BY id FOR KEY SHARE`, inviterID, inviteeID); err != nil {
+		return rollback(fmt.Errorf("chat repo CreateOrGetInvitation users: %w", err))
+	}
+	if len(users) == 0 || (inviterID != inviteeID && len(users) != 2) {
+		return rollback(apperror.ErrNotFound)
+	}
+
+	// Match removal/ownership lock order and serialize concurrent invitation retries.
+	var lockedRoomID int64
+	if err := tx.GetContext(ctx, &lockedRoomID, `SELECT id FROM rooms WHERE id = $1 FOR UPDATE`, roomID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return rollback(apperror.ErrNotFound)
+		}
+		return rollback(fmt.Errorf("chat repo CreateOrGetInvitation room: %w", err))
+	}
+
 	var memberExists bool
 	if err := tx.GetContext(ctx, &memberExists,
 		`SELECT EXISTS (SELECT 1 FROM room_members WHERE room_id = $1 AND user_id = $2)`, roomID, inviteeID); err != nil {
@@ -284,28 +302,32 @@ func (r *postgresRepository) CreateOrGetInvitation(ctx context.Context, roomID, 
 			FOR UPDATE`
 	}
 	if err := tx.GetContext(ctx, &invitation, query, roomID, inviteeID); err == nil {
-		if invitation.Status == InvitationPending || invitation.Status == InvitationAccepted {
+		if invitation.Status == InvitationPending {
 			if err := tx.Commit(); err != nil {
 				return nil, false, fmt.Errorf("chat repo CreateOrGetInvitation commit: %w", err)
 			}
 			return &invitation, false, nil
 		}
-		var updatedAt time.Time
-		if err := tx.GetContext(ctx, &updatedAt, `
+		if invitation.Status == InvitationDeclined {
+			var updatedAt time.Time
+			if err := tx.GetContext(ctx, &updatedAt, `
 			UPDATE room_invitations
 			SET invited_by = $2, status = 'pending', updated_at = NOW(), responded_at = NULL
 			WHERE id = $1
 			RETURNING updated_at`, invitation.ID, inviterID); err != nil {
-			return rollback(fmt.Errorf("chat repo CreateOrGetInvitation retry: %w", err))
+				return rollback(fmt.Errorf("chat repo CreateOrGetInvitation retry: %w", err))
+			}
+			invitation.InvitedBy = &inviterID
+			invitation.Status = InvitationPending
+			invitation.UpdatedAt = updatedAt
+			invitation.RespondedAt = nil
+			if err := tx.Commit(); err != nil {
+				return nil, false, fmt.Errorf("chat repo CreateOrGetInvitation commit: %w", err)
+			}
+			return &invitation, !memberExists, nil
 		}
-		invitation.InvitedBy = &inviterID
-		invitation.Status = InvitationPending
-		invitation.UpdatedAt = updatedAt
-		invitation.RespondedAt = nil
-		if err := tx.Commit(); err != nil {
-			return nil, false, fmt.Errorf("chat repo CreateOrGetInvitation commit: %w", err)
-		}
-		return &invitation, !memberExists, nil
+		// An accepted invitation is historical once membership is gone.
+		// Issue a new ID so replaying the old acceptance cannot rejoin.
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return rollback(fmt.Errorf("chat repo CreateOrGetInvitation lookup: %w", err))
 	}
@@ -368,6 +390,26 @@ func (r *postgresRepository) RespondInvitation(ctx context.Context, invitationID
 		return nil, false, opErr
 	}
 
+	var lockedUserID int64
+	if err := tx.GetContext(ctx, &lockedUserID, `SELECT id FROM users WHERE id = $1 FOR KEY SHARE`, inviteeID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return rollback(apperror.ErrNotFound)
+		}
+		return rollback(fmt.Errorf("chat repo RespondInvitation user: %w", err))
+	}
+
+	// Lock the room before the invitation, as removal and invitation creation do.
+	// The scoped lookup also prevents a caller locking another user's invitation.
+	var lockedRoomID int64
+	if err := tx.GetContext(ctx, &lockedRoomID, `SELECT id FROM rooms
+		WHERE id = (SELECT room_id FROM room_invitations WHERE id = $1 AND invitee_id = $2)
+		FOR UPDATE`, invitationID, inviteeID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return rollback(apperror.ErrNotFound)
+		}
+		return rollback(fmt.Errorf("chat repo RespondInvitation room: %w", err))
+	}
+
 	var invitation Invitation
 	if err := tx.GetContext(ctx, &invitation, `
 		SELECT i.id, i.room_id, r.name AS room_name, i.invitee_id, i.invited_by,
@@ -385,16 +427,16 @@ func (r *postgresRepository) RespondInvitation(ctx context.Context, invitationID
 	membershipCreated := false
 	if invitation.Status == status {
 		if status == InvitationAccepted {
-			result, err := tx.ExecContext(ctx,
-				`INSERT INTO room_members (room_id, user_id, role) VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING`, invitation.RoomID, inviteeID)
-			if err != nil {
+			// Retrying acceptance is idempotent only while membership exists.
+			// Never recreate access from an invitation predating removal/leave.
+			var memberExists bool
+			if err := tx.GetContext(ctx, &memberExists,
+				`SELECT EXISTS (SELECT 1 FROM room_members WHERE room_id = $1 AND user_id = $2)`, invitation.RoomID, inviteeID); err != nil {
 				return rollback(fmt.Errorf("chat repo RespondInvitation membership: %w", err))
 			}
-			affected, err := result.RowsAffected()
-			if err != nil {
-				return rollback(fmt.Errorf("chat repo RespondInvitation membership rows affected: %w", err))
+			if !memberExists {
+				return rollback(apperror.ErrInvitationState)
 			}
-			membershipCreated = affected > 0
 		}
 		if err := tx.Commit(); err != nil {
 			return nil, false, fmt.Errorf("chat repo RespondInvitation commit: %w", err)
