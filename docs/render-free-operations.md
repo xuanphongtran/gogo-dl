@@ -96,6 +96,93 @@ do not delete/acknowledge them to disguise delivery or delete the shared outbox.
   backup, and verify authorized history/inbox and cleanup references. Record actual
   RPO/RTO. This guide does not provision backups or claim a tested recovery time.
 
+## Recovery decision and evidence record
+
+Use the following sequence for a manual incident drill. Perform destructive
+restore work only after explicit approval, against a separate recovery target
+first. A read-only probe pass never authorizes changing hosted data.
+
+1. Record deployed commit, UTC incident time, last known successful write and
+   observed symptoms. Distinguish a sleeping origin from database failure using
+   startup logs and the separate liveness/readiness probes.
+2. If schema migration failed, inspect version/dirty status using an authorized
+   read-only session. Resolve the migration cause before restarting; do not clear
+   dirty flags, force migration versions or run down migrations as a shortcut.
+3. For database recovery, select an approved backup/restore point and record the
+   potential loss window. Restore to an isolated target; check migration version,
+   authorized history/inbox and membership before changing the application DSN.
+   Keep credentials out of command arguments, shell history and evidence files.
+4. Reconcile object state before allowing the recovered service to issue provider
+   deletes. PostgreSQL rollback cannot recreate an R2 object already deleted by
+   a later cleanup operation. Keep the recovery target's R2 credentials absent
+   until object references, quarantine deadlines and cleanup intents are checked.
+   A restored `deleted` checkpoint with missing bytes is consistent; a restored
+   live reference to missing bytes needs investigation, not a fabricated upload.
+5. Fence the previous writer/service before promoting the target. Run one
+   application instance, confirm migrations/readiness, then compare authorized
+   REST recovery IDs. Check workers only after the DB/object reconciliation gate.
+6. Observe eligible work, retry backoff and dead letters. Do not accelerate hosted
+   leases or retry schedules using the fixture-only SQL from tests. Retain all
+   broker intents until distributed delivery is explicitly implemented.
+7. Record first-request latency, oldest eligible job age, recovery completion time,
+   observed data loss, and the rollback decision. RTO ends when authorized API and
+   required recovery checks pass; process startup alone is insufficient.
+
+Use bounded aggregate-only queries to distinguish due work from intentional
+backoff. Run through an authorized session; do not export object keys, file names,
+message text, tokens or DSNs:
+
+```sql
+BEGIN READ ONLY;
+SET LOCAL statement_timeout = '5s';
+SELECT purpose, state, count(*) AS jobs,
+       count(*) FILTER (
+         WHERE (state = 'pending' AND available_at <= clock_timestamp())
+            OR (state = 'leased' AND lease_until <= clock_timestamp())
+       ) AS eligible_jobs,
+       max(attempts) AS highest_attempts
+FROM domain_outbox_deliveries
+GROUP BY purpose, state
+ORDER BY purpose, state;
+
+SELECT purpose, last_error, count(*) AS dead_jobs
+FROM domain_outbox_deliveries
+WHERE state = 'dead'
+GROUP BY purpose, last_error
+ORDER BY purpose, last_error;
+COMMIT;
+```
+
+The [existing local baseline](../plan/09-scale-observability.md#one-process-local-smoke-baseline)
+records one-process test workload, resources and DB pool settings. It establishes
+neither Render Free capacity nor a cold-start budget. For a staging capacity
+observation, agree a bounded workload first and record room/connection counts,
+request rate, HTTP/WS latency, errors/drops, memory, pool wait and job lag. Stop at
+the agreed error/resource threshold; do not infer multi-instance guarantees.
+No staging load test is part of the read-only smoke command.
+
+### Cleanup restart regression
+
+`internal/database/cleanup_recovery_integration_test.go` exercises the actual
+cleanup worker with PostgreSQL and a deterministic object-store fake. It models
+an abandoned lease before deletion, deletion without an acknowledgement, and a
+provider outage after restart. A replacement worker uses a new connection pool;
+the test checks expiry/fencing, backoff, idempotent delete, released quota,
+retained tombstone identity and untouched scan/notification/broker progress.
+The fixture advances only its own timestamps instead of waiting for real leases.
+
+Run with `TEST_DATABASE_URL` pointing only to a disposable, empty database whose
+name ends in `_test`:
+
+```sh
+go test -race -count=1 ./internal/database \
+  -run TestCleanupWorkerRecoversAfterConnectionAndWorkerRestart -timeout 90s
+```
+
+This is local connection/worker restart evidence. It does not simulate a
+PostgreSQL process crash, verify actual R2 DELETE semantics, prove an object
+backup exists, or satisfy Render redeploy/spin-down and browser acceptance gates.
+
 References: [Render Free](https://render.com/docs/free),
 [WebSocket reconnect/shutdown](https://render.com/docs/websocket),
 [Phase 9 plan](../plan/09-scale-observability.md).
