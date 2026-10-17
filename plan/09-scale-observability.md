@@ -86,6 +86,42 @@ Pending and are not completed by Free verification tooling.
   R2 cleanup/provider check or browser reconnect verification was performed.
   Local restart evidence does not establish those staging gates or an SLA.
 
+### Free recovery follow-up — 2026-10-17
+
+Branch `ft/phase-9-free-cleanup-recovery` starts from `develop` at `20f20a0`.
+This slice adds verification and operations documentation; runtime contracts,
+upload admission, dependencies and migrations are unchanged. FE priority fixes
+remain independently committed on `fix/fe-handoff-priority` at `d0d0880`.
+
+- The cleanup worker now has PostgreSQL integration coverage for connection/worker
+  replacement with an abandoned lease before DELETE, DELETE before acknowledgement,
+  and a provider outage followed by retry/restart. The worker runs normally and is
+  cancelled/joined; fixture timestamps advance lease/backoff eligibility.
+- Tests verify live leases are not stolen, expired owners cannot ACK/retry,
+  provider DELETE can repeat with one object-removal effect, quota is released,
+  tombstone identity survives, and scan/notification progress is untouched.
+  A separate broker checkpoint is deliberately seeded for a real mention intent
+  to verify retained future relay progress; no broker consumer is implemented.
+- The object store is a deterministic fake. These results prove local DB/worker
+  recovery, not real R2 provider behavior or a PostgreSQL process-crash recovery.
+- Full `go test -race -count=1 -timeout=180s ./...` and `go vet ./...` passed on
+  Go 1.23.12 with a disposable PostgreSQL 16 `_test` database. A build using
+  `go build -buildvcs=false -o /tmp/gogo-phase9-server ./cmd/server` passed;
+  VCS stamping was disabled for the host-mounted container checkout.
+  `gofmt` and `git diff --check` passed; `golangci-lint` remains unavailable.
+- One read-only public smoke pass on `https://gogo-dl.onrender.com` returned 200
+  for health/live/HTTP readiness/realtime readiness and 404 for public metrics.
+  Observed request times were 439/99/100/96/174 ms respectively. No redeploy or
+  natural spin-down was observed, and no authenticated staging data was changed.
+- The [runbook](../docs/render-free-operations.md#recovery-decision-and-evidence-record)
+  now specifies manual migration/DB recovery, DB/object reconciliation before
+  re-enabling cleanup, bounded backlog/dead-letter queries and capacity evidence.
+
+The current single-instance staging checklist stays open: authorized browser/REST
+recovery across a real redeploy, termination/drain evidence, provider cleanup,
+backup/restore and capacity observations still require staging resources/evidence.
+Scanner/provider readiness and distributed 09B–09D retain their Pending gates.
+
 ### Future distributed execution order
 
 Four reviewable slices: **09A may start before Phase 8**; horizontal production
