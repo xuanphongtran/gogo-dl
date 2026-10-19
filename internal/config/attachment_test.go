@@ -30,3 +30,42 @@ func TestAttachmentConfigFailsClosed(t *testing.T) {
 		t.Fatal("invalid account accepted")
 	}
 }
+
+func TestScannerIntegrationConfig(t *testing.T) {
+	for _, tt := range []struct {
+		name, url, token string
+		enabled, r2, bad bool
+	}{
+		{name: "disabled"},
+		{name: "partial", url: "https://scanner.example", bad: true},
+		{name: "public insecure", url: "http://public.example", token: strings.Repeat("x", 32), bad: true},
+		{name: "no storage", enabled: true, url: "http://scanner:10000", token: strings.Repeat("x", 32), bad: true},
+		{name: "enabled", enabled: true, r2: true, url: "http://scanner:10000", token: strings.Repeat("x", 32)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			setConfigBaseline(t)
+			t.Setenv("ATTACHMENT_SCAN_ENABLED", "false")
+			if tt.enabled {
+				t.Setenv("ATTACHMENT_SCAN_ENABLED", "true")
+			}
+			t.Setenv("SCANNER_URL", tt.url)
+			t.Setenv("SCANNER_API_TOKEN", tt.token)
+			for _, k := range []string{"R2_ACCOUNT_ID", "R2_BUCKET", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"} {
+				t.Setenv(k, "")
+			}
+			if tt.r2 {
+				t.Setenv("R2_ACCOUNT_ID", strings.Repeat("a", 32))
+				t.Setenv("R2_BUCKET", "private-chat")
+				t.Setenv("R2_ACCESS_KEY_ID", "test-key")
+				t.Setenv("R2_SECRET_ACCESS_KEY", "test-secret")
+			}
+			cfg, err := Load("")
+			if (err != nil) != tt.bad {
+				t.Fatalf("config err=%v", err)
+			}
+			if err == nil && cfg.AttachmentScanEnabled != tt.enabled {
+				t.Fatal("wrong scan activation")
+			}
+		})
+	}
+}

@@ -81,7 +81,7 @@ func (r *postgresRepository) Reserve(ctx context.Context, roomID, userID int64, 
         (SELECT COUNT(*) FROM attachments WHERE uploader_id=$1 AND state<>'deleted')`, userID, roomID).Scan(&userBytes, &roomBytes, &pending); err != nil {
 		return nil, fmt.Errorf("attachment quota: %w", err)
 	}
-	// All admitted rows are pending/unattached in this scanner-pending slice.
+	// Charge every retained reservation until physical cleanup releases its quota.
 	if userBytes+req.SizeBytes > 100<<20 || roomBytes+req.SizeBytes > 10<<30 || pending >= 10 {
 		return nil, apperror.ErrConflict
 	}
@@ -128,7 +128,7 @@ func (r *postgresRepository) access(ctx context.Context, roomID, userID, id int6
 		}
 		return nil, fmt.Errorf("attachment lookup: %w", err)
 	}
-	if action == "complete" && row.State != "scanning" {
+	if action == "complete" && row.State != "scanning" && row.State != "ready" {
 		if row.State != "pending_upload" || !time.Now().Before(row.UploadExpiresAt) {
 			return nil, apperror.ErrConflict
 		}

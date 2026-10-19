@@ -80,7 +80,12 @@ deployment was performed for this slice.
 
 ## 4. 08B — Attachments and shared outbox
 
-### Scanner-pending R2 foundation
+### R2 foundation and scanner integration
+
+Scanner follow-up proposal: [independent scanner SPEC](../spec/08b-independent-scanner.md)
+and [implementation plan](08b-independent-scanner.md). The standalone scanner is
+a separate project; backend integration is implemented and locally verified below.
+Real provider verification and upload activation remain pending.
 
 - [x] Migration 9: reservations, retained orphan tombstones, outbox intents,
       attachment aggregate counters and independent purpose leases.
@@ -91,9 +96,11 @@ deployment was performed for this slice.
 - [x] Cleanup sweeper, bounded provider I/O, lease fencing, capped retries/backoff,
       terminal dead letters and joined cancellation at shutdown.
 - [x] Closed runtime admission and explicit rejection of message attachment IDs.
-- [ ] Actual R2 staging capability/CORS/late-write tests; scanner selection and
-      exact-byte scan/promotion. Upload admission remains closed until these pass.
-- [ ] Ready/attached states, signed download, atomic message binding/retry and
+- [ ] Actual R2 staging capability/CORS/late-write and hosted scanner tests.
+      Upload admission remains closed until all release gates pass.
+- [x] Ready scan/promotion slice: implementation and local verification tracked in
+      [backend scanner integration](08b-scanner-integration.md); hosted R2 proof remains open.
+- [ ] Attached states, signed download, atomic message binding/retry and
       attached-message/account lifecycle producers. These require a later migration.
 
 The checklist below tracks the complete 08B target, rather than declaring the
@@ -128,7 +135,8 @@ shutdown/config; tests/docs. Keep concrete manual composition and existing layer
 Gate: real provider/scanner proof, mutable-version attack, type/size/hash rejection,
 claim/send/rollback races, quota/cancel/late-upload/object-GC, scan outage and
 promotion/DB failure recovery all pass. Fakes supplement actual capability tests.
-R2 is selected. Scanner selection and real provider proofs are pending; full 08B is not Done.
+R2 and standalone ClamAV are selected. Real provider/hosted proofs and remaining
+attachment lifecycle integrations are pending; full 08B is not Done.
 
 ## 5. 08C — Mentions and private inbox
 

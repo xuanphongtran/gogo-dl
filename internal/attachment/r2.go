@@ -65,7 +65,7 @@ func (r *R2) PresignUpload(ctx context.Context, row *Reservation) (string, map[s
 
 // Delete is retry-safe; callers wait until all upload credentials expire first.
 func (r *R2) Delete(ctx context.Context, key string) error {
-	if !objectKeyPattern.MatchString(key) {
+	if !objectKeyPattern.MatchString(key) && !finalObjectPattern.MatchString(key) {
 		return fmt.Errorf("r2 invalid object key")
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, r.endpoint+key, nil)
