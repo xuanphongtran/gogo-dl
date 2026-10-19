@@ -161,6 +161,13 @@ an older `accepted` invitation cannot recreate missing membership and returns
 membership exists. Rejoining creates a fresh membership generation, so previous
 mention/inbox records do not reappear.
 
+Management writes recheck current roles under transaction locks. Protected history
+and member-list reads hold membership stable until the read transaction commits;
+removal waits for an already authorized read, and later reads are denied. Private
+room/member-list reads return `404` for non-members; public member-only reads
+return `403`. Realtime membership controls remain best effort after DB commit;
+clients recover from the authenticated REST source of truth.
+
 Leaving a public room returns `204` even when the caller is no longer a member,
 so retries are safe. A private room without membership, or a missing room,
 returns `404`. Owners must transfer ownership before leaving (`409`).

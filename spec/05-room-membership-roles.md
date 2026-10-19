@@ -1,7 +1,7 @@
 # 05 — Room Membership and Roles Specification
 
 **Related plan:** [plan/05-room-membership-roles.md](../plan/05-room-membership-roles.md)
-**Status:** Pending — deferred at the user's request
+**Status:** Done locally — implementation, dedicated PostgreSQL/HTTP/WS/race verification complete
 **Priority:** P1
 **Depends on:** 02, 03, 04
 
@@ -41,7 +41,7 @@ In scope:
 - Room/member authorization for room details, history, writes, and WebSocket
   subscription.
 - Transactional membership, invitation, role, and ownership mutations.
-- Durable membership events followed by best-effort real-time delivery.
+- Durable membership mutations followed by best-effort real-time delivery.
 - HTTP, WebSocket, migration, service, handler, repository, and race tests.
 
 Out of scope:
@@ -85,13 +85,17 @@ an invariant, not as a client-provided field.
 An invitation has one of these states:
 
 - `pending`: invitee may accept or decline.
-- `accepted`: the invitee is a room member; repeated accept is idempotent.
+- `accepted`: records a previous acceptance. Repeated accept is idempotent while
+  membership exists; it cannot recreate membership after leave/removal.
 - `declined`: the invitee is not a member; a later authorized invite may reset
   this invitation to `pending`.
 
 There is at most one pending invitation for a `(room_id, invitee_id)` pair.
-Inviting an existing member or retrying an existing pending/accepted invitation
-is idempotent and does not create duplicate rows or duplicate events.
+Inviting an existing member or retrying a pending invitation is idempotent.
+After removal/leave, re-invitation creates a new pending invitation ID. Replaying
+an old accepted ID while membership is absent returns 409; only explicit
+acceptance of the new invitation restores private-room access. A declined
+invitation may still be reset by an authorized manager, preserving its API contract.
 
 ## Authorization matrix
 
@@ -197,7 +201,7 @@ Request:
 ```
 
 The target must be an existing user and cannot be the inviter. A new pending
-invitation returns `201 Created`; an existing pending, accepted, or membership
+invitation returns `201 Created`; a pending retry or an existing-member
 equivalent request returns `200` with the current invitation state. No
 duplicate pending invitation or duplicate event is created.
 
@@ -322,6 +326,20 @@ policy on those locked rows before deleting, and holds the locks until commit.
 Concurrent demotion, promotion, removal, or ownership transfer cannot change
 the roles between that policy check and the deletion.
 
+Invitation creation rechecks the service manager policy against the locked actor
+membership inside its transaction. Role changes lock the room then actor/target
+membership rows in user-ID order and evaluate the service policy before updating.
+Ownership/removal/role changes therefore cannot authorize writes from stale roles.
+Invite and accept lock user identities before rooms/invitations to align with
+account-deletion cascades. Protected history/member-list reads hold shared room
+and current membership locks until their query transaction commits. A read that
+wins first may complete; removal waits for its DB transaction. Once removal wins,
+new protected reads are denied. Already authorized responses may be in flight.
+
+PostgreSQL membership/invitation records are the durable Phase 05 source.
+Transactional distributed membership/account outbox producers and cross-instance
+control delivery remain Phase 09B work; this slice does not activate that relay.
+
 ## WebSocket contract
 
 The existing `join` command remains the subscription request. Its room
@@ -444,3 +462,11 @@ Use `httptest` to cover:
   never log passwords, JWTs, invitation secrets, or private profile data.
 - Monitor failed post-commit Hub revocations and event drops separately from
   database mutation failures.
+
+## Completion evidence — 2026-10-17
+
+See the [Phase 05 completion record](../plan/05-room-membership-roles.md#completion-record--2026-10-17)
+for named PostgreSQL migration, rollback, authorization, HTTP and real-WebSocket
+checks. Existing 08C tests additionally cover rejoin generation/inbox isolation.
+This completion is local; provider staging, browser acceptance, capacity and
+Render redeploy recovery remain in the Phase 08/09 rollout gates.

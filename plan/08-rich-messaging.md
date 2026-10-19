@@ -14,7 +14,7 @@ Implement **08A search → 08B attachments → 08C mentions/inbox** as reviewabl
 slices. Store/scanner investigation can run alongside search. Cleanup's shared
 outbox is reused by notifications and Phase 9. Allocate actual migration versions
 against integrated history. Phase 6 app is now integrated from `develop`; schema alone is
-insufficient. Phase 5 verification remains Pending, a release gate for membership.
+insufficient. Phase 5 verification completed locally on 2026-10-17; staging remains a release gate.
 
 Defaults: PostgreSQL `simple` search, private Cloudflare R2 with create-only keys and separate
 fail-closed scan, durable in-app mention feed. Provider/cost/scanner capability,
@@ -199,7 +199,7 @@ shutdown. Phase 9 adds broker and distributed load/failure gates.
 - [ ] HTTP/WS docs/config/retention/runbooks synchronized.
 - [ ] Review findings fixed; scan/capacity/access-window limitations disclosed.
 
-08A is Done locally. 08B foundation is implemented; scanner/provider release gates remain pending. 08C is Done locally after dedicated PostgreSQL/race verification and review fixes; Phase 05 and staging rollout remain separate release gates.
+08A is Done locally. 08B foundation is implemented; scanner/provider release gates remain pending. 08C is Done locally after dedicated PostgreSQL/race verification and review fixes; Phase 05 is now verified locally; staging rollout remains a separate release gate.
 
 ### 08B foundation verification — 2026-10-02
 

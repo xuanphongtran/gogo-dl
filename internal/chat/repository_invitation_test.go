@@ -22,6 +22,8 @@ func TestRepositoryCreateOrGetInvitationRefreshesRetryTimestamp(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(7).AddRow(42))
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id FROM rooms WHERE id = $1 FOR UPDATE`)).
 		WithArgs(int64(10)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(10))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT room_id, user_id, role, joined_at FROM room_members WHERE room_id = $1 AND user_id = $2 FOR UPDATE`)).
+		WithArgs(int64(10), int64(7)).WillReturnRows(sqlmock.NewRows([]string{"room_id", "user_id", "role", "joined_at"}).AddRow(10, 7, RoomRoleOwner, createdAt))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT EXISTS (SELECT 1 FROM room_members WHERE room_id = $1 AND user_id = $2)")).
 		WithArgs(int64(10), int64(42)).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
@@ -45,7 +47,7 @@ func TestRepositoryCreateOrGetInvitationRefreshesRetryTimestamp(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"updated_at"}).AddRow(retryUpdatedAt))
 	mock.ExpectCommit()
 
-	invitation, created, err := repo.CreateOrGetInvitation(context.Background(), 10, 7, 42)
+	invitation, created, err := repo.CreateOrGetInvitation(context.Background(), 10, 7, 42, authorizeInviteManager)
 	if err != nil {
 		t.Fatalf("CreateOrGetInvitation() error = %v", err)
 	}
@@ -168,6 +170,8 @@ func TestRepositoryCreateOrGetInvitationRefreshesAcceptedMemberTimestamp(t *test
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(7).AddRow(42))
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id FROM rooms WHERE id = $1 FOR UPDATE`)).
 		WithArgs(int64(10)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(10))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT room_id, user_id, role, joined_at FROM room_members WHERE room_id = $1 AND user_id = $2 FOR UPDATE`)).
+		WithArgs(int64(10), int64(7)).WillReturnRows(sqlmock.NewRows([]string{"room_id", "user_id", "role", "joined_at"}).AddRow(10, 7, RoomRoleOwner, createdAt))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT EXISTS (SELECT 1 FROM room_members WHERE room_id = $1 AND user_id = $2)")).
 		WithArgs(int64(10), int64(42)).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
@@ -191,7 +195,7 @@ func TestRepositoryCreateOrGetInvitationRefreshesAcceptedMemberTimestamp(t *test
 		WillReturnRows(sqlmock.NewRows([]string{"updated_at", "responded_at"}).AddRow(previousUpdatedAt.Add(time.Hour), respondedAt))
 	mock.ExpectCommit()
 
-	invitation, created, err := repo.CreateOrGetInvitation(context.Background(), 10, 7, 42)
+	invitation, created, err := repo.CreateOrGetInvitation(context.Background(), 10, 7, 42, authorizeInviteManager)
 	if err != nil {
 		t.Fatalf("CreateOrGetInvitation() error = %v", err)
 	}

@@ -31,9 +31,13 @@ type Repository interface {
 	JoinPublicRoom(ctx context.Context, roomID, userID int64) (bool, error)
 	GetMember(ctx context.Context, roomID, userID int64) (*RoomMember, error)
 	ListMembers(ctx context.Context, roomID int64) ([]*RoomMember, error)
+	ListMembersForUser(ctx context.Context, roomID, userID int64, authorize ReadStatePolicy) ([]*RoomMember, error)
+	ListMessagesForMember(ctx context.Context, roomID, userID int64, limit int, beforeID int64, authorize ReadStatePolicy) ([]*Message, error)
 	SetMemberRole(ctx context.Context, roomID, userID int64, role RoomRole) error
+	// SetMemberRoleWithAuthorization evaluates the service policy on locked rows.
+	SetMemberRoleWithAuthorization(ctx context.Context, roomID, actorID, userID int64, role RoomRole, authorize func(actor, target *RoomMember) error) (bool, error)
 	TransferOwnership(ctx context.Context, roomID, currentOwnerID, targetUserID int64) error
-	CreateOrGetInvitation(ctx context.Context, roomID, inviterID, inviteeID int64) (*Invitation, bool, error)
+	CreateOrGetInvitation(ctx context.Context, roomID, inviterID, inviteeID int64, authorize func(actor *RoomMember) error) (*Invitation, bool, error)
 	GetInvitation(ctx context.Context, invitationID, inviteeID int64) (*Invitation, error)
 	ListInvitations(ctx context.Context, inviteeID int64, status InvitationStatus, limit int) ([]*Invitation, error)
 	RespondInvitation(ctx context.Context, invitationID, inviteeID int64, status InvitationStatus) (*Invitation, bool, error)

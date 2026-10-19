@@ -17,8 +17,8 @@ with Neon PostgreSQL, local WebSocket fanout/presence/typing/limits and the exis
 PostgreSQL notification/cleanup workers. Phase 09A remains Done locally; its Free
 staging recovery follow-up below remains open. Distributed 09B/09C and the multi-node
 09D rollout are Pending at the user's request, not prerequisites for operating the
-current single-instance service. Phase 05 verification and 08B scanner/provider
-gates retain their existing status.
+current single-instance service. Phase 05 is verified locally as of 2026-10-17; 08B scanner/provider
+gates remain pending.
 
 Render Free supports one instance and can spin down after 15 minutes without
 inbound HTTP or WebSocket traffic. Background work therefore has no always-on
@@ -125,7 +125,7 @@ Scanner/provider readiness and distributed 09B–09D retain their Pending gates.
 ### Future distributed execution order
 
 Four reviewable slices: **09A may start before Phase 8**; horizontal production
-scaling requires 09B–09D. Phase 5 verification remains Pending. Phase 6/7 app code is now integrated
+scaling requires 09B–09D. Phase 5 is verified locally as of 2026-10-17. Phase 6/7 app code is now integrated
 from `develop`; distributed lifecycle producer gates remain pending.
 
 - 09A: privacy-safe correlation/metrics/traces, probes and bounded drain.

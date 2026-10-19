@@ -17,9 +17,10 @@ requirements and verification decisions.
 
 The related execution plans remain in [`plan/`](../plan/).
 
-Plans 01–04 are Done after verification. Phase 05 is Pending at the user's
-request. Phase 06 is implemented and verified using the existing membership
-and role contract.
+Plans 01–05 are Done locally after verification. Phase 05 dedicated PostgreSQL,
+authenticated HTTP and WebSocket verification completed on 2026-10-17, including
+stale-role and protected-read fixes. Phase 06 is implemented and verified using
+the membership and role contract. Provider/browser rollout gates remain separate.
 
 Phase 07 was implemented and verified from main; Phase 06 application code
 is now included from develop. Its schema includes migration 000006 before 000007 to preserve
