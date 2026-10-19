@@ -83,21 +83,28 @@ query plans for selective/common terms. External search requires measured eviden
 
 ### Implemented foundation and pending release gates
 
+An [independent ClamAV scanner design](08b-independent-scanner.md) now describes
+a proposed standalone service. Its plan does not enable uploads or complete the
+remaining scan/promotion/provider gates below.
+
 Migration 9 implements reservations, unverified metadata, idempotent complete/cancel,
 attachment aggregate sequences, independent outbox purposes and fenced cleanup.
-Public initiation validates input then returns 503 while the scanner is pending.
-`ATTACHMENT_UPLOAD_ENABLED=true` fails startup. No ready/attached state, download,
-scan consumer, final promotion, message binding or realtime attachment event exists
-in this foundation. Nonempty message `attachment_ids` returns 503 before persistence.
-The table below describes the intended complete 08B contract; its download route is
-not registered yet.
+Public initiation validates input then returns503 while release gates remain open.
+`ATTACHMENT_UPLOAD_ENABLED=true` still fails startup. Migration11 adds an opt-in
+independent-scanner consumer, same-byte final promotion and ready-unattached metadata;
+see the [backend integration contract](08b-scanner-integration.md). No attached
+state, download, message binding or realtime attachment event exists yet. Nonempty
+message `attachment_ids` returns503 before persistence. The table below describes
+the intended complete08B contract; its download route is not registered yet.
 
 Room/account cascades currently set attachment parent references to NULL, retaining
 opaque object identity. The sweeper atomically creates cleanup intent and marks a
 tombstone deleting after the deadline, including orphaned/scanning reservations.
 This supports reservation cleanup; atomic cleanup for future attached messages and
-account/lifecycle producers remains pending. Scan intents are retained without a
-consumer; complete never means verified. No runtime path enables initiation yet.
+account/lifecycle producers remains pending. Scan intents are consumed only with explicit scanner/R2 configuration and
+ATTACHMENT_SCAN_ENABLED=true; complete itself never means verified. No runtime
+path enables initiation yet. Ready retention/dual-object cleanup and lease budgets
+are specified in the backend integration contract.
 
 
 IDs are positive int64 JSON numbers. Room actions require current membership;

@@ -98,3 +98,30 @@ func TestCleanupWorkerStopsAndJoins(t *testing.T) {
 		t.Fatal("worker leaked after cancellation")
 	}
 }
+
+type finalCleanupStore struct {
+	ObjectStore
+	keys      []string
+	failFinal bool
+}
+
+func (s *finalCleanupStore) Delete(ctx context.Context, key string) error {
+	s.keys = append(s.keys, key)
+	if len(s.keys) == 2 && s.failFinal {
+		return errors.New("final object unavailable")
+	}
+	return ctx.Err()
+}
+func TestCleanupDeletesFinalBeforeAcknowledgement(t *testing.T) {
+	for _, fail := range []bool{false, true} {
+		store := &finalCleanupStore{failFinal: fail}
+		queue := &workerQueue{job: &outbox.Job{ObjectKey: testObjectKey}}
+		NewWorker(&workerRepository{}, queue, store).process(context.Background())
+		if len(store.keys) != 2 || store.keys[1] != "final/11111111-2222-4333-8444-555555555555" || queue.done == fail {
+			t.Fatalf("keys=%v done=%t", store.keys, queue.done)
+		}
+		if fail && queue.retry != "storage_unavailable" {
+			t.Fatal("final cleanup failure not retained")
+		}
+	}
+}

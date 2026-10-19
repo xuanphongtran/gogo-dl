@@ -41,7 +41,7 @@ type ObjectStore interface {
 	Delete(context.Context, string) error
 }
 
-// Service protects admission while the actual scanner and provider proofs are pending.
+// Service protects admission while attachment lifecycle and provider proofs are pending.
 type Service struct {
 	repo      Repository
 	store     ObjectStore
@@ -126,6 +126,11 @@ func (s *Service) Get(ctx context.Context, userID, roomID, id int64) (*Metadata,
 	if err != nil {
 		return nil, fmt.Errorf("attachment get: %w", err)
 	}
+	row.Verified = row.State == "ready"
+	if row.Verified {
+		expires := row.CleanupAfter
+		row.ExpiresAt = &expires
+	}
 	return &row.Metadata, nil
 }
 
@@ -137,6 +142,11 @@ func (s *Service) Complete(ctx context.Context, userID, roomID, id int64) (*Meta
 	row, err := s.repo.Transition(ctx, roomID, userID, id, "complete", requireMember)
 	if err != nil {
 		return nil, fmt.Errorf("attachment complete: %w", err)
+	}
+	row.Verified = row.State == "ready"
+	if row.Verified {
+		expires := row.CleanupAfter
+		row.ExpiresAt = &expires
 	}
 	return &row.Metadata, nil
 }

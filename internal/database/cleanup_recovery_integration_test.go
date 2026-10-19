@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -20,6 +21,7 @@ type recoveryObjectStore struct {
 	key            string
 	exists         bool
 	calls, effects int
+	finalCalls     int
 	fail           bool
 }
 
@@ -29,6 +31,13 @@ func (s *recoveryObjectStore) Delete(ctx context.Context, key string) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if key == strings.Replace(s.key, "quarantine/", "final/", 1) {
+		s.finalCalls++
+		if s.fail {
+			return errors.New("simulated provider outage")
+		}
+		return nil // No final object was created by these schema-10 fixtures.
+	}
 	if key != s.key {
 		return errors.New("unexpected cleanup identity")
 	}
@@ -218,13 +227,13 @@ func TestCleanupWorkerRecoversAfterConnectionAndWorkerRestart(t *testing.T) {
 				t.Fatalf("notification progress=%d err=%v", notificationPending, err)
 			}
 			provider.mu.Lock()
-			calls, effects, exists := provider.calls, provider.effects, provider.exists
+			calls, effects, exists, finalCalls := provider.calls, provider.effects, provider.exists, provider.finalCalls
 			provider.mu.Unlock()
 			wantCalls := 1
 			if stage != "before provider delete" {
 				wantCalls = 2
 			}
-			if calls != wantCalls || effects != 1 || exists {
+			if calls != wantCalls || effects != 1 || exists || finalCalls != 1 {
 				t.Fatalf("provider calls=%d effects=%d exists=%v", calls, effects, exists)
 			}
 			if job, err := queue.Claim(ctx, outbox.Cleanup); err != nil || job != nil {

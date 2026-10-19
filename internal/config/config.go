@@ -29,6 +29,9 @@ type Config struct {
 	R2AccessKeyID           string
 	R2SecretAccessKey       string
 	AttachmentUploadEnabled bool
+	AttachmentScanEnabled   bool
+	ScannerURL              string
+	ScannerAPIToken         string
 	// Server
 	ServerHost string
 	ServerPort string

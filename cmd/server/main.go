@@ -28,6 +28,7 @@ import (
 	"github.com/xuanphongtran/gogo-dl/internal/httpserver"
 	"github.com/xuanphongtran/gogo-dl/internal/notification"
 	"github.com/xuanphongtran/gogo-dl/internal/outbox"
+	"github.com/xuanphongtran/gogo-dl/internal/scannerapi"
 	"github.com/xuanphongtran/gogo-dl/internal/telemetry"
 	"github.com/xuanphongtran/gogo-dl/internal/user"
 	"github.com/xuanphongtran/gogo-dl/internal/ws"
@@ -87,11 +88,16 @@ func run() error {
 	var observability *telemetry.Runtime
 	var stopCleanup context.CancelFunc
 	var cleanupDone chan struct{}
+	var stopScan context.CancelFunc
+	var scanDone chan struct{}
 	var stopNotifications context.CancelFunc
 	var notificationsDone chan struct{}
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(signalCtx), cfg.ShutdownTimeout)
 		defer cancel()
+		if stopScan != nil {
+			stopScan()
+		}
 		if stopCleanup != nil {
 			stopCleanup()
 		}
@@ -124,6 +130,13 @@ func run() error {
 			case <-cleanupDone:
 			case <-ctx.Done():
 				log.Warn().Msg("shutdown: attachment cleanup reached its limit")
+			}
+		}
+		if scanDone != nil {
+			select {
+			case <-scanDone:
+			case <-ctx.Done():
+				log.Warn().Msg("shutdown: attachment scan reached its limit")
 			}
 		}
 		if notificationsDone != nil {
@@ -197,9 +210,21 @@ func run() error {
 	attachmentRepo := attachment.NewRepository(db.DB)
 	var objectStore attachment.ObjectStore
 	if cfg.R2AccountID != "" {
-		objectStore, err = attachment.NewR2(cfg.R2AccountID, cfg.R2Bucket, cfg.R2AccessKeyID, cfg.R2SecretAccessKey)
-		if err != nil {
-			return fmt.Errorf("startup: attachment storage: %w", err)
+		r2Store, storeErr := attachment.NewR2(cfg.R2AccountID, cfg.R2Bucket, cfg.R2AccessKeyID, cfg.R2SecretAccessKey)
+		if storeErr != nil {
+			return fmt.Errorf("startup: attachment storage: %w", storeErr)
+		}
+		objectStore = r2Store
+		if cfg.AttachmentScanEnabled {
+			scanner, scanErr := scannerapi.New(cfg.ScannerURL, cfg.ScannerAPIToken)
+			if scanErr != nil {
+				return fmt.Errorf("startup: scanner: %w", scanErr)
+			}
+			scanCtx, cancelScan := context.WithCancel(signalCtx)
+			stopScan = cancelScan
+			scanDone = make(chan struct{})
+			scanWorker := attachment.NewScanWorker(attachment.NewScanRepository(db.DB), outbox.NewStore(db.DB), r2Store, scanner)
+			go func() { defer close(scanDone); scanWorker.Run(scanCtx) }()
 		}
 		cleanupCtx, cancelCleanup := context.WithCancel(signalCtx)
 		stopCleanup = cancelCleanup

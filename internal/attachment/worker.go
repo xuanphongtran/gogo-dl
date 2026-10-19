@@ -22,7 +22,7 @@ type Worker struct {
 	store ObjectStore
 }
 
-// NewWorker constructs a single cleanup consumer. No scanner consumer is started.
+// NewWorker constructs a single cleanup consumer, independent of scan delivery.
 func NewWorker(repo Repository, queue CleanupQueue, store ObjectStore) *Worker {
 	return &Worker{repo: repo, queue: queue, store: store}
 }
@@ -40,7 +40,7 @@ func (w *Worker) Run(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		workCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		workCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
 		w.process(workCtx)
 		cancel()
 	}
@@ -59,7 +59,8 @@ func (w *Worker) process(ctx context.Context) {
 	if job == nil {
 		return
 	}
-	if !objectKeyPattern.MatchString(job.ObjectKey) {
+	key, keyErr := finalKey(job.ObjectKey)
+	if keyErr != nil {
 		if err := w.queue.Retry(ctx, outbox.Cleanup, job, "invalid_job"); err != nil {
 			log.Warn().Str("event_id", job.EventID).Msg("attachment invalid job acknowledgement failed")
 		}
@@ -72,6 +73,15 @@ func (w *Worker) process(ctx context.Context) {
 		}
 		if err := w.queue.Retry(ctx, outbox.Cleanup, job, "storage_unavailable"); err != nil {
 			log.Warn().Str("event_id", job.EventID).Msg("attachment cleanup retry scheduling failed")
+		}
+		return
+	}
+	if err := w.store.Delete(ctx, key); err != nil {
+		if ctx.Err() != nil {
+			return
+		}
+		if err := w.queue.Retry(ctx, outbox.Cleanup, job, "storage_unavailable"); err != nil {
+			log.Warn().Msg("attachment final cleanup retry failed")
 		}
 		return
 	}

@@ -114,7 +114,7 @@ func (s *Store) Claim(ctx context.Context, purpose string) (*Job, error) {
           AND (state='pending' OR (state='leased' AND lease_until<=clock_timestamp()))
         ORDER BY available_at,event_id FOR UPDATE SKIP LOCKED LIMIT 1
     ), claimed AS (
-        UPDATE domain_outbox_deliveries d SET state='leased',lease_token=$2,lease_until=clock_timestamp()+interval '30 seconds',attempts=attempts+1
+        UPDATE domain_outbox_deliveries d SET state='leased',lease_token=$2,lease_until=clock_timestamp()+CASE WHEN $1='attachment_scan' THEN interval '60 seconds' ELSE interval '30 seconds' END,attempts=attempts+1
         FROM candidate c WHERE d.event_id=c.event_id AND d.purpose=c.purpose
         RETURNING d.event_id,d.lease_token
     ) SELECT `+projection+`
@@ -178,7 +178,7 @@ func (s *Store) Retry(ctx context.Context, purpose string, job *Job, category st
 	if job == nil {
 		return fmt.Errorf("outbox missing job")
 	}
-	if category != "storage_unavailable" && category != "invalid_job" {
+	if category != "storage_unavailable" && category != "scanner_unavailable" && category != "invalid_job" {
 		return fmt.Errorf("outbox invalid failure category")
 	}
 	res, err := s.db.ExecContext(ctx, `UPDATE domain_outbox_deliveries SET

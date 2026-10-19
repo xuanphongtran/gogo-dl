@@ -483,13 +483,14 @@ configured `SHUTDOWN_TIMEOUT`.
 See [the operations guide](docs/observability.md) for metrics, dashboards, alerts,
 SLO definitions, deployment checks and local verification evidence.
 
-## Phase 08B: R2 attachment foundation (scanner pending)
+## Phase 08B: R2 attachment foundation
 
 Cloudflare R2 is selected. The AWS SDK core signer signs requests locally using
 Cloudflare credentials; no AWS account is needed. All objects must remain private.
 Migration `000009` adds reservations, retained cleanup tombstones, attachment
 aggregate counters and independent outbox deliveries. This is not a complete
-attachment feature: scanning, promotion, downloads and message binding are pending.
+attachment feature: downloads and message binding are pending. Opt-in scanning
+and promotion are implemented by migration `000011` (see integration below).
 
 Set all four variables together to run the cleanup worker:
 `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`.
@@ -497,7 +498,7 @@ Use the account's 32-character lowercase hex ID and a private bucket name.
 Store credentials in local env files or Render secrets, never in Git.
 Docker Compose loads these through its existing `configs/.env` entry.
 Keep `ATTACHMENT_UPLOAD_ENABLED=false`; setting it true fails startup while the
-scanner and real R2 capability checks are pending. Without R2 configuration the
+remaining lifecycle and real R2 capability checks are pending. Without R2 configuration the
 cleanup worker is inactive and reservations retain quota/storage until configured.
 
 Authenticated routes under `/api/v1`:
@@ -505,7 +506,7 @@ Authenticated routes under `/api/v1`:
 | Method | Route | Current behavior |
 | --- | --- | --- |
 | POST | `/rooms/:id/attachments/uploads` | Validates metadata + `Idempotency-Key`, then 503 (admission closed) |
-| GET | `/rooms/:id/attachments/:attachment_id` | 200 unverified metadata, uploader and current member only |
+| GET | `/rooms/:id/attachments/:attachment_id` | 200 current metadata (`verified` only when ready), uploader and current member only |
 | POST | `/rooms/:id/attachments/:attachment_id/complete` | 202 scan request/current state, never a clean verdict |
 | DELETE | `/rooms/:id/attachments/:attachment_id` | 204 idempotent cancel and delayed cleanup |
 
@@ -522,14 +523,14 @@ The cleanup worker waits until this deadline plus ten minutes, keeps quota charg
 until deletion succeeds, and uses 30-second fenced leases and eight attempts with
 backoff. A storage outage never exposes unverified files. Cancel, account deletion
 and room deletion retain cleanup identity; orphaned reservations are swept later.
-Scan deliveries have no consumer yet. No attachment event is emitted on WebSocket.
+Scan deliveries have an opt-in consumer; no attachment event is emitted on WebSocket.
 
 Monitor `domain_outbox_deliveries` for cleanup `dead` rows, failed attempts and oldest
 pending jobs, and `attachments` for orphaned/deleting rows and reserved bytes.
 Investigate the storage failure before any operator-controlled replay; dead jobs
 retain their keys and quota. No automatic retention policy removes these records.
 Real R2 conditional PUT, concurrent writes, signed size/type headers, browser CORS,
-late writes and exact-byte scanner/promotion tests are required before opening
+late writes and hosted scanner/promotion checks are required before opening
 admission. See [spec](spec/08-rich-messaging.md) and [plan](plan/08-rich-messaging.md).
 
 ## Phase 08C: mentions and private inbox
@@ -582,3 +583,43 @@ WebSocket joins without printing tokens or response bodies. See the
 [Free operation runbook](docs/render-free-operations.md) for before/after redeploy
 checks, worker backlog inspection and rollback. Distributed Phase 09B–09D remain
 deferred while running one Free instance.
+
+## Independent attachment scanner integration
+
+The backend can consume attachment scan intents with an independently deployed
+`gogo-scanner` service. Migration `000011` adds fenced scan metadata and `ready` state.
+Set `ATTACHMENT_SCAN_ENABLED=true`, all four R2 settings, `SCANNER_URL` (for example
+`http://gogo-scanner:10000` on the same private network) and `SCANNER_API_TOKEN`.
+The scanner and backend must share a random 32–512-byte nonspace ASCII service
+secret, distinct from both JWT secrets. No service token belongs in the frontend.
+
+Use HTTPS outside private networks; HTTP is accepted only for loopback/private IPs,
+`.internal` or single-label private service hostnames. Verify the actual private
+network/DNS configuration; environment-supplied endpoints are operator controlled.
+URL credentials, paths, query strings, redirects and environment proxies are not
+accepted. Optional scanner settings must be a complete valid pair even when off.
+
+The single sequential worker verifies conditional R2 reads, exact 10 MiB-bounded
+bytes/hash, full JPEG/PNG decoding (max 25 megapixels) or UTF-8 nonbinary text, then
+requires a scanner verdict matching the same bytes. It conditionally creates and
+reads back `final/<reservation UUID>` before atomically committing ready plus scan
+acknowledgement. Scan jobs have a 60 s lease/45 s work budget; other purpose leases
+remain 30 s. Ready unattached retention is 24 h. Cancellation, lost leases, removal,
+invalid/infected bytes and untrusted/failed responses never publish ready.
+
+Cleanup retains the original quarantine identity through cascades and always
+removes both deterministic quarantine/final keys before releasing quota, including
+crashes after promotion. Cleanup has a 12 s work budget within its 30 s lease. Both
+physical objects may exist during retention; budget/monitor provider bytes and
+cleanup backlog separately from logical reservation quota. Do not run older cleanup
+binaries against promoted objects. Migration `000011` down refuses live prepared scans;
+never use production down/force to bypass that guard.
+
+**Upload admission remains closed:** `ATTACHMENT_UPLOAD_ENABLED=true` still fails
+startup. Real R2 create-only/CORS/late-write/grace proofs, message attachment binding,
+authorized download and lifecycle producers remain release gates. Configuring this
+worker does not complete 08B or enable attachment sends. Network/provider operations
+are outside DB transactions and Hub; worker cancellation is joined at shutdown.
+
+See [scanner integration SPEC](spec/08b-scanner-integration.md) and
+[plan](plan/08b-scanner-integration.md) for verification and rollout boundaries.
