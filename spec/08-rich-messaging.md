@@ -1,3 +1,7 @@
+> Current 08B processing policy: [lightweight sanitizer](08b-lightweight-processing.md)
+> defaults to JPEG/PNG rewriting and strict TXT, with optional ClamAV through v2.
+> PDF/Office and public upload activation remain out of scope for this slice.
+
 # 08 — Search, Attachments, and Notifications Specification
 
 **Priority:** P2
@@ -89,9 +93,10 @@ remaining scan/promotion/provider gates below.
 
 Migration 9 implements reservations, unverified metadata, idempotent complete/cancel,
 attachment aggregate sequences, independent outbox purposes and fenced cleanup.
-Public initiation validates input then returns503 while release gates remain open.
-`ATTACHMENT_UPLOAD_ENABLED=true` still fails startup. Migration11 adds an opt-in
-independent-scanner consumer, same-byte final promotion and ready-unattached metadata;
+Public initiation now issues quarantine PUT tickets when explicitly enabled via
+`ATTACHMENT_UPLOAD_ENABLED=true`, requiring configured R2 and an enabled processor;
+otherwise it returns503. Migration11 added the initial scanner consumer and
+migration12 adds separate artifact metadata for v2 processing/promotion;
 see the [backend integration contract](08b-scanner-integration.md). No attached
 state, download, message binding or realtime attachment event exists yet. Nonempty
 message `attachment_ids` returns503 before persistence. The table below describes
@@ -177,7 +182,9 @@ final key; no unqualified copy of a mutable/latest source is acceptable.
 
 Real R2 tests must prove concurrent create-only PUT, signed header enforcement,
 size limits, CORS/browser upload, in-flight write completion and conditional reads.
-These gates remain pending and upload admission remains closed.
+Local create-only/type/read/promotion checks have passed. Browser CORS and
+hosted late-write/grace checks remain rollout verification, while quarantine
+admission is explicitly opt-in at the user's request.
 [Cloudflare R2 S3 compatibility](https://developers.cloudflare.com/r2/api/s3/api/),
 [R2 presigned URLs](https://developers.cloudflare.com/r2/api/s3/presigned-urls/)
 

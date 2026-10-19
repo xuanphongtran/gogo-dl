@@ -39,7 +39,7 @@ func ids(c *gin.Context, withAttachment bool) (int64, int64, error) {
 }
 
 // Initiate godoc
-// @Summary Reserve attachment upload (unavailable while scanner is pending)
+// @Summary Reserve a private quarantine upload (requires upload admission enabled)
 // @Tags attachments
 // @Security BearerAuth
 // @Accept json

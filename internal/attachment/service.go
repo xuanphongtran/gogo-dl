@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 	"unicode"
@@ -41,17 +42,21 @@ type ObjectStore interface {
 	Delete(context.Context, string) error
 }
 
-// Service protects admission while attachment lifecycle and provider proofs are pending.
+// Service owns validated, optional upload admission and member-only lifecycle access.
 type Service struct {
 	repo      Repository
 	store     ObjectStore
 	admission bool
 }
 
-// NewService creates a service with upload admission closed. There is deliberately
-// no runtime option to open it before scanner integration and capability proofs.
+// NewService creates a service with upload admission closed.
 func NewService(repo Repository, store ObjectStore) *Service {
 	return &Service{repo: repo, store: store}
+}
+
+// NewUploadService enables ticket creation after composition validates worker/storage configuration.
+func NewUploadService(repo Repository, store ObjectStore) *Service {
+	return &Service{repo: repo, store: store, admission: true}
 }
 
 func normalize(req *UploadRequest, key string) (*UploadRequest, string, error) {
@@ -65,6 +70,10 @@ func normalize(req *UploadRequest, key string) (*UploadRequest, string, error) {
 		return nil, "", apperror.ErrInvalidRequest
 	}
 	if value.ContentType != "image/jpeg" && value.ContentType != "image/png" && value.ContentType != "text/plain" {
+		return nil, "", apperror.ErrInvalidRequest
+	}
+	ext := strings.ToLower(filepath.Ext(value.Filename))
+	if !((value.ContentType == "image/jpeg" && (ext == ".jpg" || ext == ".jpeg")) || (value.ContentType == "image/png" && ext == ".png") || (value.ContentType == "text/plain" && ext == ".txt")) {
 		return nil, "", apperror.ErrInvalidRequest
 	}
 	if value.SizeBytes < 1 || value.SizeBytes > 10<<20 {
@@ -90,7 +99,7 @@ func normalize(req *UploadRequest, key string) (*UploadRequest, string, error) {
 	return &value, hex.EncodeToString(digest[:]), nil
 }
 
-// Initiate validates metadata before reserving; upload admission remains closed.
+// Initiate validates metadata and authorizes a reservation before signing a quarantine ticket.
 func (s *Service) Initiate(ctx context.Context, userID, roomID int64, key string, req *UploadRequest) (*UploadTicket, error) {
 	if userID <= 0 || roomID <= 0 {
 		return nil, apperror.ErrInvalidRequest

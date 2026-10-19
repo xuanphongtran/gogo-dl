@@ -22,7 +22,7 @@ func TestScannerReadyFencingAndCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer m.Close()
-	if err := m.Migrate(11); err != nil {
+	if err := m.Migrate(12); err != nil {
 		t.Fatal(err)
 	}
 	repo := attachment.NewRepository(db)
@@ -50,7 +50,7 @@ func TestScannerReadyFencingAndCleanup(t *testing.T) {
 	if _, err := db.Exec(`UPDATE domain_outbox_deliveries SET lease_until=clock_timestamp()-interval '1 second' WHERE event_id=$1`, job.EventID); err != nil {
 		t.Fatal(err)
 	}
-	if err := scans.FinishScan(ctx, job, "clean"); err == nil {
+	if err := scans.FinishScan(ctx, job, "clean", &attachment.ProcessedMetadata{SHA256: row.SHA256, SizeBytes: row.SizeBytes, ContentType: row.ContentType, Engine: "clamav", Policy: "clamav-v1"}); err == nil {
 		t.Fatal("stale scan marked ready")
 	}
 	current, err := queue.Claim(ctx, outbox.Scan)
@@ -60,7 +60,7 @@ func TestScannerReadyFencingAndCleanup(t *testing.T) {
 	if _, err := scans.PrepareScan(ctx, current); err != nil {
 		t.Fatal(err)
 	}
-	if err := scans.FinishScan(ctx, current, "clean"); err != nil {
+	if err := scans.FinishScan(ctx, current, "clean", &attachment.ProcessedMetadata{SHA256: row.SHA256, SizeBytes: row.SizeBytes, ContentType: row.ContentType, Engine: "clamav", Policy: "clamav-v1"}); err != nil {
 		t.Fatal(err)
 	}
 	ready, err := attachment.NewService(repo, nil).Get(ctx, owner, room, row.ID)
@@ -78,10 +78,13 @@ func TestScannerReadyFencingAndCleanup(t *testing.T) {
 	if err := m.Force(11); err != nil {
 		t.Fatal(err)
 	}
+	if err := m.Migrate(12); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := repo.Transition(ctx, room, owner, row.ID, "cancel", attachmentPolicy); err != nil {
 		t.Fatal(err)
 	}
-	if err := scans.FinishScan(ctx, current, "clean"); err == nil {
+	if err := scans.FinishScan(ctx, current, "clean", &attachment.ProcessedMetadata{SHA256: row.SHA256, SizeBytes: row.SizeBytes, ContentType: row.ContentType, Engine: "clamav", Policy: "clamav-v1"}); err == nil {
 		t.Fatal("completed lease reused")
 	}
 }
@@ -102,7 +105,7 @@ func TestScannerRejectsCancelledAndRemovedMembership(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer m.Close()
-			if err := m.Migrate(11); err != nil {
+			if err := m.Migrate(12); err != nil {
 				t.Fatal(err)
 			}
 			repo := attachment.NewRepository(db)
@@ -131,7 +134,7 @@ func TestScannerRejectsCancelledAndRemovedMembership(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if err := scans.FinishScan(ctx, job, "clean"); err != nil {
+			if err := scans.FinishScan(ctx, job, "clean", &attachment.ProcessedMetadata{SHA256: row.SHA256, SizeBytes: row.SizeBytes, ContentType: row.ContentType, Engine: "clamav", Policy: "clamav-v1"}); err != nil {
 				t.Fatal(err)
 			}
 			var state string

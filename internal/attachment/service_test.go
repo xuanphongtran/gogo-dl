@@ -129,3 +129,81 @@ func TestAttachmentHTTPAdmissionAuthenticationAndMetadata(t *testing.T) {
 	}
 
 }
+
+func TestEnabledUploadHTTP(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	row := &Reservation{ObjectKey: testObjectKey, Metadata: Metadata{ID: 3, Filename: "test.txt", ContentType: "text/plain", SizeBytes: 42, State: "pending_upload", UploadExpiresAt: time.Now().Add(time.Minute)}}
+	repo := &serviceRepository{row: row}
+	svc := NewUploadService(repo, testR2(t))
+	engine := gin.New()
+	group := engine.Group("/api/v1")
+	group.Use(func(c *gin.Context) { c.Set(middleware.ContextKeyUserID, int64(1)) })
+	NewHandler(svc).RegisterRoutes(group)
+	for _, tt := range []struct {
+		name, filename string
+		repoErr        error
+		status         int
+	}{
+		{"ticket", "test.txt", nil, 201},
+		{"unsupported extension", "test.exe", nil, 400},
+		{"type mismatch", "test.jpg", nil, 400},
+		{"forbidden", "test.txt", apperror.ErrForbidden, 403},
+		{"private room", "test.txt", apperror.ErrNotFound, 404},
+		{"retry conflict", "test.txt", apperror.ErrConflict, 409},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			repo.err = tt.repoErr
+			before := repo.calls
+			req := httptest.NewRequest("POST", "/api/v1/rooms/2/attachments/uploads", strings.NewReader(`{"filename":"`+tt.filename+`","content_type":"text/plain","size_bytes":42,"sha256":"`+strings.Repeat("a", 64)+`"}`))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Idempotency-Key", "request-key-12345")
+			rr := httptest.NewRecorder()
+			engine.ServeHTTP(rr, req)
+			if rr.Code != tt.status {
+				t.Fatalf("status=%d want=%d", rr.Code, tt.status)
+			}
+			if tt.status == 400 && repo.calls != before {
+				t.Fatal("invalid metadata reserved")
+			}
+			if tt.status == 201 && (!strings.Contains(rr.Body.String(), `"method":"PUT"`) || !strings.Contains(rr.Body.String(), `"upload_url":`) || strings.Contains(rr.Body.String(), `"verified":true`)) {
+				t.Fatal("invalid pending ticket")
+			}
+		})
+	}
+	repo.err = nil
+	if _, err := NewUploadService(repo, nil).Initiate(context.Background(), 1, 2, "request-key-12345", &UploadRequest{Filename: "test.txt", ContentType: "text/plain", SizeBytes: 42, SHA256: strings.Repeat("a", 64)}); !errors.Is(err, apperror.ErrAttachmentsUnavailable) {
+		t.Fatal("missing storage allowed")
+	}
+}
+
+type failedUploadSigner struct{ ObjectStore }
+
+func (failedUploadSigner) PresignUpload(context.Context, *Reservation) (string, map[string]string, error) {
+	return "", nil, errors.New("private signer error")
+}
+func TestUploadSigningFailureIsSafeAndAuthorizationPrecedesSigning(t *testing.T) {
+	repo := &serviceRepository{row: &Reservation{Metadata: Metadata{State: "pending_upload", UploadExpiresAt: time.Now().Add(time.Minute)}}}
+	svc := NewUploadService(repo, failedUploadSigner{})
+	req := &UploadRequest{Filename: "test.txt", ContentType: "text/plain", SizeBytes: 42, SHA256: strings.Repeat("a", 64)}
+	if _, err := svc.Initiate(context.Background(), 1, 2, "request-key-12345", req); !errors.Is(err, apperror.ErrStorageUnavailable) || strings.Contains(err.Error(), "private signer") {
+		t.Fatal("unsafe signing failure")
+	}
+	if repo.calls != 1 {
+		t.Fatal("reservation not persisted before signing")
+	}
+	for _, authErr := range []error{apperror.ErrForbidden, apperror.ErrNotFound} {
+		repo.err = authErr
+		if _, err := svc.Initiate(context.Background(), 1, 2, "request-key-12345", req); !errors.Is(err, authErr) {
+			t.Fatal("authorization bypassed by signer")
+		}
+	}
+	engine := gin.New()
+	group := engine.Group("/api/v1")
+	group.Use(middleware.Auth(&config.Config{JWTAccessSecret: "test-secret"}))
+	NewHandler(svc).RegisterRoutes(group)
+	rr := httptest.NewRecorder()
+	engine.ServeHTTP(rr, httptest.NewRequest("POST", "/api/v1/rooms/2/attachments/uploads", nil))
+	if rr.Code != 401 {
+		t.Fatal("upload lacks authentication")
+	}
+}

@@ -232,7 +232,11 @@ func run() error {
 		worker := attachment.NewWorker(attachmentRepo, outbox.NewStore(db.DB), objectStore)
 		go func() { defer close(cleanupDone); worker.Run(cleanupCtx) }()
 	}
-	attachmentHandler := attachment.NewHandler(attachment.NewService(attachmentRepo, objectStore))
+	attachmentService := attachment.NewService(attachmentRepo, objectStore)
+	if cfg.AttachmentUploadEnabled {
+		attachmentService = attachment.NewUploadService(attachmentRepo, objectStore)
+	}
+	attachmentHandler := attachment.NewHandler(attachmentService)
 	notificationRepo := notification.NewRepository(db.DB)
 	notificationHandler := notification.NewHandler(notification.NewService(notificationRepo))
 	notificationCtx, cancelNotifications := context.WithCancel(signalCtx)

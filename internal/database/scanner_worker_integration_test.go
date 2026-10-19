@@ -1,11 +1,14 @@
 package database
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/png"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -24,6 +27,7 @@ type scannerIntegrationStore struct {
 	attachment.ObjectStore
 	mu         sync.Mutex
 	body       []byte
+	output     []byte
 	objects    map[string]bool
 	promotions int
 	effects    int
@@ -43,7 +47,7 @@ func (s *scannerIntegrationStore) Promote(ctx context.Context, row *attachment.R
 	}
 	s.objects[key] = true
 	s.mu.Unlock()
-	if string(body) != string(s.body) {
+	if !bytes.Equal(body, s.output) {
 		return fmt.Errorf("different bytes")
 	}
 	if first && s.afterFirst != nil {
@@ -81,18 +85,38 @@ func waitScannerState(t *testing.T, ctx context.Context, read func() (string, er
 	}
 }
 func TestScannerWorkerHTTPPersistenceAndPromotionRecovery(t *testing.T) {
-	for _, mode := range []string{"clean", "lost_lease_after_promotion", "infected"} {
+	for _, mode := range []string{"clean", "transformed", "lost_lease_after_promotion", "infected"} {
 		t.Run(mode, func(t *testing.T) {
-			db, _ := phase7Database(t, 11)
+			db, _ := phase7Database(t, 12)
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			owner := phase7User(t, db, "scan_http_owner")
 			room := phase7Room(t, chat.NewRepository(db), owner, "scanner HTTP", chat.RoomVisibilityPublic)
 			body := []byte("scanner integration synthetic bytes")
+			output := body
+			media, name := "text/plain", "test.txt"
+			if mode == "transformed" || mode == "lost_lease_after_promotion" {
+				var source, destination bytes.Buffer
+				img := image.NewRGBA(image.Rect(0, 0, 16, 16))
+				slow, fast := png.Encoder{CompressionLevel: png.BestCompression}, png.Encoder{CompressionLevel: png.BestSpeed}
+				if err := slow.Encode(&source, img); err != nil {
+					t.Fatal(err)
+				}
+				if err := fast.Encode(&destination, img); err != nil {
+					t.Fatal(err)
+				}
+				body, output = source.Bytes(), destination.Bytes()
+				media, name = "image/png", "test.png"
+				if bytes.Equal(body, output) {
+					t.Fatal("fixture not transformed")
+				}
+			}
+			outputHash := sha256.Sum256(output)
+			outputDigest := hex.EncodeToString(outputHash[:])
 			hash := sha256.Sum256(body)
 			digest := hex.EncodeToString(hash[:])
 			repo := attachment.NewRepository(db)
-			row, err := repo.Reserve(ctx, room, owner, "scanner-http-key", digest, &attachment.UploadRequest{Filename: "test.txt", ContentType: "text/plain", SizeBytes: int64(len(body)), SHA256: digest}, attachmentPolicy)
+			row, err := repo.Reserve(ctx, room, owner, "scanner-http-key", digest, &attachment.UploadRequest{Filename: name, ContentType: media, SizeBytes: int64(len(body)), SHA256: digest}, attachmentPolicy)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -109,19 +133,22 @@ func TestScannerWorkerHTTPPersistenceAndPromotionRecovery(t *testing.T) {
 					w.WriteHeader(400)
 					return
 				}
-				verdict := "clean"
+				if r.URL.Path != "/v2/process" {
+					t.Error("wrong process endpoint")
+				}
 				if mode == "infected" {
-					verdict = "infected"
+					w.WriteHeader(422)
+					return
 				}
 				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(map[string]any{"verdict": verdict, "sha256": digest, "size_bytes": len(body), "engine": "clamav", "scanned_at": time.Now().UTC()})
+				json.NewEncoder(w).Encode(scannerapi.Artifact{Verdict: "accepted", InputSHA256: digest, InputSizeBytes: int64(len(body)), Body: output, SHA256: outputDigest, SizeBytes: int64(len(output)), ContentType: media, Engine: "sanitize", Policy: "sanitize-v1", ProcessedAt: time.Now().UTC()})
 			}))
 			defer server.Close()
 			scanner, err := scannerapi.New(server.URL, token)
 			if err != nil {
 				t.Fatal(err)
 			}
-			store := &scannerIntegrationStore{body: body, objects: map[string]bool{row.ObjectKey: true}}
+			store := &scannerIntegrationStore{body: body, output: output, objects: map[string]bool{row.ObjectKey: true}}
 			if mode == "lost_lease_after_promotion" {
 				store.afterFirst = func(ctx context.Context) error {
 					_, err := db.ExecContext(ctx, `UPDATE domain_outbox_deliveries SET lease_until=clock_timestamp()-interval '1 second' WHERE purpose='attachment_scan' AND event_id IN (SELECT event_id FROM domain_outbox WHERE attachment_id=$1)`, row.ID)
@@ -156,6 +183,16 @@ func TestScannerWorkerHTTPPersistenceAndPromotionRecovery(t *testing.T) {
 				}
 			} else if effects != 1 {
 				t.Fatal("missing or duplicate promotion effect")
+			}
+			if mode != "infected" {
+				var sourceHash, processedHash, engine, policy string
+				var sourceSize, processedSize int64
+				if err := db.QueryRowxContext(ctx, `SELECT sha256,size_bytes,processed_sha256,processed_size_bytes,processing_engine,processing_policy FROM attachments WHERE id=$1`, row.ID).Scan(&sourceHash, &sourceSize, &processedHash, &processedSize, &engine, &policy); err != nil {
+					t.Fatal(err)
+				}
+				if sourceHash != digest || sourceSize != int64(len(body)) || processedHash != outputDigest || processedSize != int64(len(output)) || engine != "sanitize" || policy != "sanitize-v1" {
+					t.Fatal("source or artifact metadata corrupted")
+				}
 			}
 			if mode == "lost_lease_after_promotion" && promotions != 2 {
 				t.Fatal("lease recovery not exercised")

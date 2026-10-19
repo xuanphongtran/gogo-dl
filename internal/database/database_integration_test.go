@@ -94,8 +94,8 @@ func TestEmbeddedMigrationsConcurrentStart(t *testing.T) {
 	if err := db.QueryRow(`SELECT version, dirty FROM schema_migrations`).Scan(&version, &dirty); err != nil {
 		t.Fatalf("migration state: %v", err)
 	}
-	if version != 11 || dirty {
-		t.Fatalf("migration state = version %d, dirty %t; want version 11 and clean", version, dirty)
+	if version != 12 || dirty {
+		t.Fatalf("migration state = version %d, dirty %t; want version 12 and clean", version, dirty)
 	}
 }
 

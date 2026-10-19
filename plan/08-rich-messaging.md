@@ -82,6 +82,11 @@ deployment was performed for this slice.
 
 ### R2 foundation and scanner integration
 
+Current extension: [lightweight processing](08b-lightweight-processing.md), default
+JPEG/PNG sanitization + TXT validation with optional ClamAV through the same v2
+contract. Quarantine ticket admission can now be enabled explicitly with R2 and
+scan-worker configuration; download/message binding and complete08B remain pending.
+
 Scanner follow-up proposal: [independent scanner SPEC](../spec/08b-independent-scanner.md)
 and [implementation plan](08b-independent-scanner.md). The standalone scanner is
 a separate project; backend integration is implemented and locally verified below.
@@ -95,9 +100,10 @@ Real provider verification and upload activation remain pending.
       Uses the core AWS signer locally with R2 credentials; no AWS account needed.
 - [x] Cleanup sweeper, bounded provider I/O, lease fencing, capped retries/backoff,
       terminal dead letters and joined cancellation at shutdown.
-- [x] Closed runtime admission and explicit rejection of message attachment IDs.
+- [x] Default-disabled runtime admission; explicit opt-in now requires configured
+      R2 + enabled processor. Message attachment IDs remain rejected.
 - [ ] Actual R2 staging capability/CORS/late-write and hosted scanner tests.
-      Upload admission remains closed until all release gates pass.
+      These remain rollout checks; user-authorized quarantine admission is opt-in.
 - [x] Ready scan/promotion slice: implementation and local verification tracked in
       [backend scanner integration](08b-scanner-integration.md); hosted R2 proof remains open.
 - [ ] Attached states, signed download, atomic message binding/retry and

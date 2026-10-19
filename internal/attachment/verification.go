@@ -45,7 +45,7 @@ func verifyBytes(row *Reservation, body []byte) error {
 		return errInvalidContent
 	}
 	cfg, kind, err := image.DecodeConfig(bytes.NewReader(body))
-	if err != nil || kind != wanted || cfg.Width < 1 || cfg.Height < 1 || cfg.Width > 25000000 || cfg.Height > 25000000/cfg.Width {
+	if err != nil || kind != wanted || cfg.Width < 1 || cfg.Height < 1 || cfg.Width > 4000000 || cfg.Height > 4000000/cfg.Width {
 		return errInvalidContent
 	}
 	decoded, kind, err := image.Decode(bytes.NewReader(body))
