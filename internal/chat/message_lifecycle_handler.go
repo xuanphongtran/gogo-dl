@@ -9,7 +9,7 @@ import (
 )
 
 // EditMessage edits the authenticated author's message.
-// @Description  Content must be nonblank and at most 4000 UTF-8 bytes after trimming whitespace.
+// @Description  Content may be blank only when the message retains attachments; at most 4000 UTF-8 bytes.
 // @Summary      Edit a message authored by the current member
 // @Tags         messages
 // @Accept       json

@@ -16,8 +16,9 @@ import (
 // and nullable message authors while retaining the existing write operations.
 type explicitRepository struct {
 	Repository
-	db       *sqlx.DB
-	mentions bool
+	db          *sqlx.DB
+	mentions    bool
+	attachments bool
 }
 
 func (r *explicitRepository) GetRoomByID(ctx context.Context, id int64) (*Room, error) {
@@ -51,10 +52,10 @@ func (r *explicitRepository) ListRooms(ctx context.Context) ([]*Room, error) {
 func (r *explicitRepository) ListMessages(ctx context.Context, roomID int64, limit int, beforeID int64) ([]*Message, error) {
 	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.ListMessages")
 	defer span.End()
-	return listMessageHistory(ctx, r.db, r.mentions, roomID, limit, beforeID)
+	return listMessageHistory(ctx, r.db, r.mentions, r.attachments, roomID, limit, beforeID)
 }
 
-func listMessageHistory(ctx context.Context, queryer sqlx.QueryerContext, mentions bool, roomID int64, limit int, beforeID int64) ([]*Message, error) {
+func listMessageHistory(ctx context.Context, queryer sqlx.QueryerContext, mentions bool, attachments bool, roomID int64, limit int, beforeID int64) ([]*Message, error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -70,6 +71,9 @@ func listMessageHistory(ctx context.Context, queryer sqlx.QueryerContext, mentio
 		projection = strings.Replace(projection, "m.deleted_at", "m.deleted_at"+mentionProjection, 1)
 	}
 
+	if attachments {
+		projection = strings.Replace(projection, "m.deleted_at", "m.deleted_at"+attachmentProjection, 1)
+	}
 	var (
 		msgs []*Message
 		err  error

@@ -135,8 +135,8 @@ func (s *Service) Get(ctx context.Context, userID, roomID, id int64) (*Metadata,
 	if err != nil {
 		return nil, fmt.Errorf("attachment get: %w", err)
 	}
-	row.Verified = row.State == "ready"
-	if row.Verified {
+	row.Verified = row.State == "ready" || row.State == "attached"
+	if row.State == "ready" {
 		expires := row.CleanupAfter
 		row.ExpiresAt = &expires
 	}
@@ -152,8 +152,8 @@ func (s *Service) Complete(ctx context.Context, userID, roomID, id int64) (*Meta
 	if err != nil {
 		return nil, fmt.Errorf("attachment complete: %w", err)
 	}
-	row.Verified = row.State == "ready"
-	if row.Verified {
+	row.Verified = row.State == "ready" || row.State == "attached"
+	if row.State == "ready" {
 		expires := row.CleanupAfter
 		row.ExpiresAt = &expires
 	}

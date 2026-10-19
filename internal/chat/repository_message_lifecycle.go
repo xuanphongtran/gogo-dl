@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/xuanphongtran/gogo-dl/internal/attachment"
 
 	"github.com/xuanphongtran/gogo-dl/pkg/apperror"
 	"go.opentelemetry.io/otel"
@@ -44,6 +45,15 @@ func (r *postgresRepository) mutateMessage(ctx context.Context, roomID, actorID,
 		return nil, false, opErr
 	}
 
+	if r.attachments {
+		var pinned int64
+		if err := tx.GetContext(ctx, &pinned, `SELECT id FROM users WHERE id=$1 FOR KEY SHARE`, actorID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return rollback(apperror.ErrNotFound)
+			}
+			return rollback(fmt.Errorf("chat attachment mutation actor: %w", err))
+		}
+	}
 	// Room first matches ownership-transfer locking. Shared membership locks
 	// allow other readers but prevent revocation/demotion until this commits.
 	var visibility RoomVisibility
@@ -75,6 +85,11 @@ func (r *postgresRepository) mutateMessage(ctx context.Context, roomID, actorID,
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return rollback(fmt.Errorf("chat repo mutateMessage message: %w", err))
 	}
+	if r.attachments && msg != nil {
+		if err := loadMessageAttachments(ctx, tx, msg); err != nil {
+			return rollback(err)
+		}
+	}
 	changed, err := policy(visibility, member, msg)
 	if err != nil {
 		return rollback(err)
@@ -95,6 +110,21 @@ func (r *postgresRepository) mutateMessage(ctx context.Context, roomID, actorID,
 		}
 		if err != nil {
 			return rollback(fmt.Errorf("chat repo mutateMessage write: %w", err))
+		}
+	}
+	if r.attachments && changed && content == nil {
+		if err := attachment.ScheduleMessageCleanup(ctx, tx, msg.ID); err != nil {
+			return rollback(err)
+		}
+		msg.Attachments = attachment.List{}
+	}
+	if r.attachments && changed {
+		kind := "message.updated"
+		if content == nil {
+			kind = "message.deleted"
+		}
+		if err := appendMessageIntent(ctx, tx, msg, kind); err != nil {
+			return rollback(err)
 		}
 	}
 	if r.mentions && msg != nil {

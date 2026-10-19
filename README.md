@@ -483,14 +483,16 @@ configured `SHUTDOWN_TIMEOUT`.
 See [the operations guide](docs/observability.md) for metrics, dashboards, alerts,
 SLO definitions, deployment checks and local verification evidence.
 
-## Phase 08B: R2 attachment foundation
+## Phase 08B: R2 uploads, message attachments and downloads
 
 Cloudflare R2 is selected. The AWS SDK core signer signs requests locally using
 Cloudflare credentials; no AWS account is needed. All objects must remain private.
 Migration `000009` adds reservations, retained cleanup tombstones, attachment
-aggregate counters and independent outbox deliveries. This is not a complete
-attachment feature: downloads and message binding are pending. Opt-in scanning
-and promotion are implemented by migration `000011` (see integration below).
+aggregate counters and independent outbox deliveries. Migration `000011` adds
+processing, `000012` stores processed artifacts, and `000013` adds atomic message
+binding, authorized downloads and attached-file lifecycle cleanup. See the
+[frontend contract](docs/attachments.md) and [completion SPEC](spec/08b-message-attachments.md).
+The lightweight processor is the supported default; ClamAV is deferred indefinitely.
 
 Set all four variables together to run the cleanup worker:
 `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`.
@@ -507,16 +509,19 @@ Authenticated routes under `/api/v1`:
 | Method | Route | Current behavior |
 | --- | --- | --- |
 | POST | `/rooms/:id/attachments/uploads` | 201 private quarantine PUT ticket when enabled; 503 when disabled |
-| GET | `/rooms/:id/attachments/:attachment_id` | 200 current metadata (`verified` only when ready), uploader and current member only |
+| GET | `/rooms/:id/attachments/:attachment_id` | 200 current metadata; unattached files are uploader-only; attached files are visible to current members |
 | POST | `/rooms/:id/attachments/:attachment_id/complete` | 202 scan request/current state, never a clean verdict |
-| DELETE | `/rooms/:id/attachments/:attachment_id` | 204 idempotent cancel and delayed cleanup |
+| DELETE | `/rooms/:id/attachments/:attachment_id` | 204 idempotent cancel and delayed cleanup; attached files return 409 |
+| GET | `/rooms/:id/messages/:message_id/attachments/:attachment_id/download` | 200 authorized final-object GET URL, valid 60 seconds |
 
 Upload metadata fields: `filename`, `content_type`, `size_bytes`, `sha256`.
 Allowed extension/type pairs: `.jpg`/`.jpeg` + JPEG, `.png` + PNG, `.txt` + plain
 text (extension case-insensitive); size 1–10 MiB; checksum 64 hex characters.
-Retry keys are 16–128 printable ASCII bytes. Quotas are 100 MiB and 10 outstanding
-reservations per user, 10 GiB per room. Nonempty message `attachment_ids` returns
-503 before persistence; ordinary text messages continue to work.
+Retry keys are 16–128 printable ASCII bytes. Quotas are 100 MiB and 10 pending
+unattached reservations per user, 1 GiB total per user and 10 GiB per room.
+Message `attachment_ids` accepts up to five distinct own ready/unexpired files in
+the same room and requires `Idempotency-Key`. A file-only message may have empty
+content. Binding and message creation commit atomically; retries do not claim twice.
 
 Each reservation owns a unique `quarantine/<uuid>` key. PUT credentials bind
 `If-None-Match: *`, Content-Type and Content-Length with a five-minute deadline.
@@ -525,7 +530,9 @@ The cleanup worker waits until this deadline plus ten minutes, keeps quota charg
 until deletion succeeds, and uses 30-second fenced leases and eight attempts with
 backoff. A storage outage never exposes unverified files. Cancel, account deletion
 and room deletion retain cleanup identity; orphaned reservations are swept later.
-Scan deliveries have an opt-in consumer; no attachment event is emitted on WebSocket.
+Scan deliveries have an opt-in consumer. Message REST/WS payloads include safe
+processed attachment metadata, never object keys or signed URLs. Attached files
+outlive the 24-hour ready TTL; message/account deletion schedules delayed cleanup.
 
 Monitor `domain_outbox_deliveries` for cleanup `dead` rows, failed attempts and oldest
 pending jobs, and `attachments` for orphaned/deleting rows and reserved bytes.
@@ -560,8 +567,8 @@ Mention IDs must be positive, distinct, and limited to 10; normalized IDs are
 sorted. Self mentions remain on the message but generate no notification.
 `Idempotency-Key` must contain 16–128 printable ASCII bytes; reusing a retained key
 with different normalized room/content/recipient data returns `409`. Retries
-recheck current room authorization. Content remains required; `attachment_ids`
-are reserved and rejected with `503` until message attachment binding is implemented.
+recheck current room authorization. Content may be empty with valid attachments;
+file sends also require the key, whose normalized body includes attachment IDs.
 
 Notification DTOs contain `id`, `kind`, `room_id`, `message_id`, `created_at`,
 nullable `read_at`, and `availability` (`available` or `deleted`). Other users'
@@ -624,8 +631,9 @@ also refuses live sanitized artifacts because schema11 cannot interpret them.
 
 **Upload admission is opt-in:** `ATTACHMENT_UPLOAD_ENABLED=true` requires configured
 R2 and an enabled configured processing worker. Ticket creation and processing do
-not complete 08B: hosted CORS/late-write/grace verification, message binding,
-authorized download and attached lifecycle producers remain separate work. Network/provider operations
+not alone complete 08B. Schema13 implements message binding, authorized download
+and lifecycle cleanup. Hosted end-to-end binding/download/recovery verification
+remains a rollout gate. Network/provider operations
 are outside DB transactions and Hub; worker cancellation is joined at shutdown.
 
 See [scanner integration SPEC](spec/08b-scanner-integration.md) and
@@ -633,6 +641,12 @@ See [scanner integration SPEC](spec/08b-scanner-integration.md) and
 
 
 ### Deploy lightweight processing (08B)
+
+**Schema13 rollout:** stop/drain all older backend and cleanup processes before
+applying migration13 and accepting file messages. Older binaries do not understand
+attached retention/cancel rules. Do not overlap them with binding traffic. Keep
+R2 objects private. Rollback to schema12 refuses live bindings; do not force it
+or run production migration-down. See [rollout steps](docs/attachments.md#rollout).
 
 1. Stop/drain old backend scan workers before migration `000012`; schema11 workers
    cannot finalize ready without artifact metadata. Temporarily deploy with
@@ -642,7 +656,7 @@ See [scanner integration SPEC](spec/08b-scanner-integration.md) and
    `sanitize` mode). Configure `SCANNER_MODE=sanitize`,
    `SCANNER_LISTEN_ADDR=0.0.0.0:10000`, `GOMEMLIMIT=320MiB` and the shared
    `SCANNER_API_TOKEN`; health path `/readyz`. It needs no ClamAV/signature volume.
-2. Deploy this backend with migration `000012`, existing R2 settings and
+2. Deploy this backend through migration `000013`, existing R2 settings and
    `SCANNER_URL=https://<scanner-service>.onrender.com` (base URL only),
    `SCANNER_API_TOKEN`, `ATTACHMENT_SCAN_ENABLED=true` and
    `ATTACHMENT_UPLOAD_ENABLED=true` to enable quarantine tickets. A developer's `127.0.0.1` is unreachable
@@ -657,7 +671,8 @@ See [scanner integration SPEC](spec/08b-scanner-integration.md) and
 
 No PDF/Office/SVG/HTML/archives are added. Images are re-encoded without metadata;
 EXIF orientation/color metadata is not preserved, so presentation may change.
-Public upload, authorized download and message binding remain separate gates.
+Upload admission is opt-in. Message binding and authorized download are implemented
+by schema13; deploying this branch and hosted smoke remain separate rollout gates.
 
 Local real-provider test (creates/deletes only random owned object keys):
 
@@ -685,11 +700,15 @@ See [lightweight SPEC](spec/08b-lightweight-processing.md) and
    Poll GET of the same attachment for `scanning`, `ready` or `rejected`.
    `ready` means processing policy passed, not an antivirus guarantee. Metadata
    size/hash describe original upload; output metadata remains internal.
-4. DELETE that attachment route to cancel; cleanup waits for upload expiry/grace.
-   Unattached ready files expire after24h. Download and sending attachment IDs in
-   messages are not implemented yet.
+4. Send up to five ready IDs in message `attachment_ids` with a message-specific
+   `Idempotency-Key`; content may be blank when files are present. Use the
+   [binding/download contract](docs/attachments.md) for response metadata and GET.
+5. DELETE the attachment route to cancel an unattached file; cleanup waits for
+   upload expiry/grace. Unattached ready files expire after24h; attached files
+   follow message/account cleanup instead and cannot be independently canceled.
 
-Configure bucket CORS for your exact frontend origins and PUT, permitting
+Configure bucket CORS for your exact frontend origins and PUT (plus GET for
+browser-fetched downloads), permitting
 Content-Type and If-None-Match; otherwise browser uploads fail despite successful
 backend ticket creation. Never expose the bucket publicly or log/cache tickets.
 Keep cleanup running and monitor scan/cleanup dead jobs; scanner outages can

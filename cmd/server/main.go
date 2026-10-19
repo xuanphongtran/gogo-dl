@@ -194,20 +194,20 @@ func run() error {
 	// ── 5. Dependency wiring (manual DI, no framework) ───────────────────────
 
 	// user domain
-	userRepo := user.NewRepository(db.DB)
-	userSvc := user.NewService(userRepo, cfg)
-	userHandler := user.NewHandler(userSvc)
+	userRepo := user.NewAttachmentRepository(db.DB)
 
 	// chat domain
-	chatRepo := chat.NewMentionRepository(db.DB)
+	chatRepo := chat.NewAttachmentRepository(db.DB)
 	chatSvc := chat.NewService(chatRepo, hub)
+	userSvc := user.NewServiceWithAttachmentEvents(userRepo, cfg, chatSvc.PublishAttachmentChanges)
+	userHandler := user.NewHandler(userSvc)
 	hub.SetRoomAuthorizer(chatSvc)
 	// Run() is the hub event loop; start it after all dependencies are wired.
 	go hub.Run()
 	log.Info().Msg("ws hub running")
 	chatHandler := chat.NewHandler(chatSvc, hub)
 
-	attachmentRepo := attachment.NewRepository(db.DB)
+	attachmentRepo := attachment.NewBoundRepository(db.DB)
 	var objectStore attachment.ObjectStore
 	if cfg.R2AccountID != "" {
 		r2Store, storeErr := attachment.NewR2(cfg.R2AccountID, cfg.R2Bucket, cfg.R2AccessKeyID, cfg.R2SecretAccessKey)

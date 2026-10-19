@@ -66,6 +66,9 @@ func (r *postgresRepository) SearchMessages(ctx context.Context, roomID, userID 
 	if r.mentions {
 		projection = strings.Replace(projection, "m.deleted_at\n", "m.deleted_at"+mentionProjection+"\n", 1)
 	}
+	if r.attachments {
+		projection = strings.Replace(projection, "m.deleted_at", "m.deleted_at"+attachmentProjection, 1)
+	}
 	if beforeID > 0 {
 		err = tx.SelectContext(ctx, &messages, projection+` AND m.id < $3 ORDER BY m.id DESC LIMIT $4`, roomID, query, beforeID, limit)
 	} else {

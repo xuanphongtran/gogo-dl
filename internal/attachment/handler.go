@@ -18,6 +18,7 @@ func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 // RegisterRoutes requires the caller's group to already enforce authentication.
 func (h *Handler) RegisterRoutes(private *gin.RouterGroup) {
 	private.POST("/rooms/:id/attachments/uploads", h.Initiate)
+	private.GET("/rooms/:id/messages/:message_id/attachments/:attachment_id/download", h.Download)
 	private.GET("/rooms/:id/attachments/:attachment_id", h.Get)
 	private.POST("/rooms/:id/attachments/:attachment_id/complete", h.Complete)
 	private.DELETE("/rooms/:id/attachments/:attachment_id", h.Cancel)
@@ -137,4 +138,35 @@ func (h *Handler) Cancel(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+// Download godoc
+// @Summary Get a 60-second private download URL for a live message attachment
+// @Tags attachments
+// @Security BearerAuth
+// @Produce json
+// @Param id path int true "Room ID"
+// @Param message_id path int true "Message ID"
+// @Param attachment_id path int true "Attachment ID"
+// @Success 200 {object} DownloadTicket
+// @Failure 400,401,403,404,503 {object} apperror.AppError
+// @Router /api/v1/rooms/{id}/messages/{message_id}/attachments/{attachment_id}/download [get]
+func (h *Handler) Download(c *gin.Context) {
+	room, id, err := ids(c, true)
+	if err != nil {
+		apperror.Respond(c, err)
+		return
+	}
+	message, err := strconv.ParseInt(c.Param("message_id"), 10, 64)
+	if err != nil || message <= 0 {
+		apperror.Respond(c, apperror.ErrInvalidRequest)
+		return
+	}
+	ticket, err := h.svc.Download(c.Request.Context(), middleware.MustGetUserID(c), room, message, id)
+	if err != nil {
+		apperror.Respond(c, err)
+		return
+	}
+	c.Header("Cache-Control", "private, no-store")
+	c.JSON(http.StatusOK, ticket)
 }

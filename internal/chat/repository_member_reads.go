@@ -57,7 +57,7 @@ func (r *postgresRepository) ListMessagesForMember(ctx context.Context, roomID, 
 	var messages []*Message
 	err := readMemberData(ctx, r.db, roomID, userID, authorize, func(tx *sqlx.Tx) error {
 		var err error
-		messages, err = listMessageHistory(ctx, tx, r.mentions, roomID, limit, beforeID)
+		messages, err = listMessageHistory(ctx, tx, r.mentions, r.attachments, roomID, limit, beforeID)
 		return err
 	})
 	if err != nil {

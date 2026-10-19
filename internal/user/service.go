@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/xuanphongtran/gogo-dl/internal/attachment"
 	"github.com/xuanphongtran/gogo-dl/internal/config"
 	"github.com/xuanphongtran/gogo-dl/internal/middleware"
 	"github.com/xuanphongtran/gogo-dl/pkg/apperror"
@@ -13,13 +14,21 @@ import (
 
 // Service encapsulates business logic for the user domain.
 type Service struct {
-	repo Repository
-	cfg  *config.Config
+	repo                   Repository
+	cfg                    *config.Config
+	afterAttachmentCleanup func(context.Context, int64, *attachment.AccountCleanup)
 }
 
 // NewService creates a new user Service.
 func NewService(repo Repository, cfg *config.Config) *Service {
 	return &Service{repo: repo, cfg: cfg}
+}
+
+// NewServiceWithAttachmentEvents wires post-commit message refreshes without transport dependencies.
+func NewServiceWithAttachmentEvents(repo Repository, cfg *config.Config, notify func(context.Context, int64, *attachment.AccountCleanup)) *Service {
+	svc := NewService(repo, cfg)
+	svc.afterAttachmentCleanup = notify
+	return svc
 }
 
 // Register creates a new user account and returns a token pair.
@@ -144,6 +153,18 @@ func (s *Service) DeleteAccount(ctx context.Context, requesterID, targetID int64
 	defer span.End()
 	if requesterID != targetID {
 		return apperror.ErrForbidden
+	}
+	if rich, ok := s.repo.(interface {
+		DeleteAccountWithChanges(context.Context, int64) (*attachment.AccountCleanup, error)
+	}); ok {
+		changes, err := rich.DeleteAccountWithChanges(ctx, targetID)
+		if err != nil {
+			return err
+		}
+		if s.afterAttachmentCleanup != nil {
+			s.afterAttachmentCleanup(ctx, targetID, changes)
+		}
+		return nil
 	}
 	return s.repo.DeleteAccount(ctx, targetID)
 }

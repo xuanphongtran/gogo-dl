@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,7 +16,10 @@ import (
 
 const projection = `id,room_id,uploader_id,object_key,filename,content_type,size_bytes,sha256,request_hash,state,created_at,upload_expires_at,cleanup_after`
 
-type postgresRepository struct{ db *sqlx.DB }
+type postgresRepository struct {
+	db    *sqlx.DB
+	bound bool
+}
 
 // NewRepository creates PostgreSQL attachment storage.
 func NewRepository(db *sqlx.DB) Repository { return &postgresRepository{db: db} }
@@ -48,6 +52,15 @@ func (r *postgresRepository) Reserve(ctx context.Context, roomID, userID int64, 
 		return nil, fmt.Errorf("attachment reserve begin: %w", err)
 	}
 	defer rollback(tx, &err)
+	if r.bound {
+		var pinned int64
+		if err := tx.GetContext(ctx, &pinned, `SELECT id FROM users WHERE id=$1 FOR KEY SHARE`, userID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, apperror.ErrNotFound
+			}
+			return nil, fmt.Errorf("attachment pin uploader: %w", err)
+		}
+	}
 	if err := authorize(ctx, tx, roomID, userID, policy); err != nil {
 		return nil, err
 	}
@@ -75,14 +88,26 @@ func (r *postgresRepository) Reserve(ctx context.Context, roomID, userID int64, 
 		return nil, fmt.Errorf("attachment retry lookup: %w", lookupErr)
 	}
 	var userBytes, roomBytes, pending int64
-	if err := tx.QueryRowxContext(ctx, `SELECT
+	var totalBytes int64
+	if r.bound {
+		if err := tx.QueryRowxContext(ctx, `SELECT
+  COALESCE(SUM(size_bytes) FILTER (WHERE uploader_id=$1 AND message_id IS NULL),0),
+  COALESCE(SUM(size_bytes) FILTER (WHERE room_id=$2),0),
+  COUNT(*) FILTER (WHERE uploader_id=$1 AND message_id IS NULL),
+  COALESCE(SUM(size_bytes) FILTER (WHERE uploader_id=$1),0)
+  FROM attachments WHERE state<>'deleted' AND (uploader_id=$1 OR room_id=$2)`, userID, roomID).Scan(&userBytes, &roomBytes, &pending, &totalBytes); err != nil {
+			return nil, fmt.Errorf("attachment bound quota: %w", err)
+		}
+	} else {
+		if err := tx.QueryRowxContext(ctx, `SELECT
         COALESCE((SELECT SUM(size_bytes) FROM attachments WHERE uploader_id=$1 AND state<>'deleted'),0),
         COALESCE((SELECT SUM(size_bytes) FROM attachments WHERE room_id=$2 AND state<>'deleted'),0),
         (SELECT COUNT(*) FROM attachments WHERE uploader_id=$1 AND state<>'deleted')`, userID, roomID).Scan(&userBytes, &roomBytes, &pending); err != nil {
-		return nil, fmt.Errorf("attachment quota: %w", err)
+			return nil, fmt.Errorf("attachment quota: %w", err)
+		}
+
 	}
-	// Charge every retained reservation until physical cleanup releases its quota.
-	if userBytes+req.SizeBytes > 100<<20 || roomBytes+req.SizeBytes > 10<<30 || pending >= 10 {
+	if userBytes+req.SizeBytes > 100<<20 || roomBytes+req.SizeBytes > 10<<30 || pending >= 10 || (r.bound && totalBytes+req.SizeBytes > 1<<30) {
 		return nil, apperror.ErrConflict
 	}
 	id, err := uuid.NewRandom()
@@ -122,11 +147,23 @@ func (r *postgresRepository) access(ctx context.Context, roomID, userID, id int6
 		return nil, err
 	}
 	row = &Reservation{}
-	if err := tx.GetContext(ctx, row, `SELECT `+projection+` FROM attachments WHERE id=$1 AND room_id=$2 AND uploader_id=$3 FOR UPDATE`, id, roomID, userID); err != nil {
+	lookup := `SELECT ` + projection + ` FROM attachments WHERE id=$1 AND room_id=$2 AND uploader_id=$3 FOR UPDATE`
+	args := []any{id, roomID, userID}
+	if r.bound {
+		columns := strings.Replace(projection, "content_type,size_bytes,sha256", `CASE WHEN state='attached' THEN processed_content_type ELSE content_type END AS content_type,CASE WHEN state='attached' THEN processed_size_bytes ELSE size_bytes END AS size_bytes,CASE WHEN state='attached' THEN processed_sha256 ELSE sha256 END AS sha256`, 1)
+		lookup = `SELECT ` + columns + `,message_id FROM attachments WHERE id=$1 AND room_id=$2
+   AND (uploader_id=$3 OR ($4='get' AND state='attached' AND uploader_id IS NOT NULL))
+   AND (state<>'attached' OR EXISTS(SELECT 1 FROM messages m WHERE m.id=attachments.message_id AND m.room_id=$2 AND m.deleted_at IS NULL)) FOR UPDATE`
+		args = append(args, action)
+	}
+	if err := tx.GetContext(ctx, row, lookup, args...); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, apperror.ErrNotFound
 		}
 		return nil, fmt.Errorf("attachment lookup: %w", err)
+	}
+	if row.State == "attached" && action != "get" {
+		return nil, apperror.ErrConflict
 	}
 	if action == "complete" && row.State != "scanning" && row.State != "ready" {
 		if row.State != "pending_upload" || !time.Now().Before(row.UploadExpiresAt) {
@@ -172,12 +209,20 @@ func (r *postgresRepository) Sweep(ctx context.Context) (err error) {
 	}
 	defer rollback(tx, &err)
 	var rows []*Reservation
-	if err := tx.SelectContext(ctx, &rows, `SELECT `+projection+` FROM attachments
-        WHERE cleanup_after<=clock_timestamp() AND state NOT IN ('deleted','deleting')
-        ORDER BY cleanup_after,id FOR UPDATE SKIP LOCKED LIMIT 20`); err != nil {
+	query := `SELECT ` + projection + ` FROM attachments WHERE cleanup_after<=clock_timestamp() AND state NOT IN ('deleted','deleting') ORDER BY cleanup_after,id FOR UPDATE SKIP LOCKED LIMIT 20`
+	if r.bound {
+		query = `SELECT ` + projection + `,message_id FROM attachments WHERE state NOT IN ('deleted','deleting') AND ((state<>'attached' AND cleanup_after<=clock_timestamp()) OR (state='attached' AND (room_id IS NULL OR uploader_id IS NULL OR message_id IS NULL))) ORDER BY cleanup_after,id FOR UPDATE SKIP LOCKED LIMIT 20`
+	}
+	if err := tx.SelectContext(ctx, &rows, query); err != nil {
 		return fmt.Errorf("attachment sweep read: %w", err)
 	}
+
 	for _, row := range rows {
+		if r.bound && row.State == "attached" {
+			if err := tx.GetContext(ctx, &row.CleanupAfter, `UPDATE attachments SET cleanup_after=GREATEST(upload_expires_at+interval '10 minutes',clock_timestamp()+interval '60 seconds') WHERE id=$1 RETURNING cleanup_after`, row.ID); err != nil {
+				return fmt.Errorf("attachment orphan deadline: %w", err)
+			}
+		}
 		if err := appendIntent(ctx, tx, row, outbox.Cleanup); err != nil {
 			return err
 		}

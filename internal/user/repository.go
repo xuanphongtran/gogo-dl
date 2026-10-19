@@ -26,12 +26,18 @@ type Repository interface {
 
 // postgresRepository is the PostgreSQL implementation of Repository.
 type postgresRepository struct {
-	db *sqlx.DB
+	db          *sqlx.DB
+	attachments bool
 }
 
 // NewRepository creates a new PostgreSQL-backed Repository.
 func NewRepository(db *sqlx.DB) Repository {
 	return &postgresRepository{db: db}
+}
+
+// NewAttachmentRepository enables schema13 transactional attachment cleanup.
+func NewAttachmentRepository(db *sqlx.DB) Repository {
+	return &postgresRepository{db: db, attachments: true}
 }
 
 // Create inserts a new user row and fills u.ID and u.CreatedAt.

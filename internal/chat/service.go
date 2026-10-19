@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/rs/zerolog/log"
 	"github.com/xuanphongtran/gogo-dl/internal/ws"
@@ -98,9 +100,16 @@ func (s *Service) SendMessage(ctx context.Context, userID int64, roomID int64, r
 		return nil, apperror.ErrInvalidRequest
 	}
 	if len(req.AttachmentIDs) > 0 {
-		return nil, apperror.ErrAttachmentsUnavailable
+		bound, ok := s.repo.(interface{ AttachmentsEnabled() bool })
+		if !ok || !bound.AttachmentsEnabled() {
+			return nil, apperror.ErrAttachmentsUnavailable
+		}
 	}
 	content, ok := normalizeMessageContent(req.Content)
+	if len(req.AttachmentIDs) > 0 && utf8.ValidString(req.Content) && strings.TrimSpace(req.Content) == "" {
+		content = ""
+		ok = true
+	}
 	if !ok {
 		return nil, apperror.ErrInvalidRequest
 	}

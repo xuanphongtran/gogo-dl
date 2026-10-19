@@ -3,6 +3,8 @@ package chat
 import (
 	"context"
 	"strconv"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/rs/zerolog/log"
 	"github.com/xuanphongtran/gogo-dl/internal/ws"
@@ -19,6 +21,12 @@ func (s *Service) EditMessage(ctx context.Context, actorID, roomID, messageID in
 		return nil, apperror.ErrInvalidRequest
 	}
 	content, valid := normalizeMessageContent(req.Content)
+	if utf8.ValidString(req.Content) && strings.TrimSpace(req.Content) == "" && s != nil {
+		if bound, ok := s.repo.(interface{ AttachmentsEnabled() bool }); ok && bound.AttachmentsEnabled() {
+			content = ""
+			valid = true
+		}
+	}
 	if !valid {
 		return nil, apperror.ErrInvalidRequest
 	}
@@ -26,6 +34,9 @@ func (s *Service) EditMessage(ctx context.Context, actorID, roomID, messageID in
 		func(visibility RoomVisibility, member *RoomMember, msg *Message) (bool, error) {
 			if err := authorizeMessageMutation(visibility, member, msg); err != nil {
 				return false, err
+			}
+			if content == "" && len(msg.Attachments) == 0 {
+				return false, apperror.ErrInvalidRequest
 			}
 			if msg.UserID == nil || *msg.UserID != actorID {
 				return false, apperror.ErrForbidden
@@ -92,6 +103,9 @@ func authorizeMessageMutation(visibility RoomVisibility, member *RoomMember, msg
 }
 
 func (s *Service) broadcastMessageMutation(msg *Message, event ws.EventType) {
+	if s.hub == nil {
+		return
+	}
 	if err := s.hub.Broadcast(strconv.FormatInt(msg.RoomID, 10), ws.Message{
 		Type: event, RoomID: strconv.FormatInt(msg.RoomID, 10), Payload: msg,
 	}); err != nil {

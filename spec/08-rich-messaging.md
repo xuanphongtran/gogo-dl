@@ -6,7 +6,7 @@
 
 **Priority:** P2
 
-**Status:** In progress — 08A implemented and verified locally; 08B R2 foundation implemented, scanner/provider gates pending; 08C implemented locally, dedicated DB/race verification pending
+**Status:** 08A/08C implemented; 08B lightweight processing verified, message binding/download implemented locally in schema13; hosted binding/download rollout pending. ClamAV deferred indefinitely.
 
 **Execution plan:** [Phase 8 plan](../plan/08-rich-messaging.md)
 
@@ -19,7 +19,8 @@ durable mention notifications while offline. PostgreSQL remains authoritative;
 object storage holds file bytes. Existing text sends and ID-based history remain
 compatible. Section 3 (08A) is implemented with local verification recorded in
 the execution plan; the remaining attachment provider gates are future work while
-the notification section is implemented locally with dedicated verification pending.
+the notification section is implemented and verified locally. Schema13 completion
+is specified separately in the linked extension.
 
 Deliver three slices: **08A search**, **08B attachments**, **08C mentions/inbox**.
 Phase 6 application code is now integrated from `develop`, including its
@@ -85,31 +86,23 @@ query plans for selective/common terms. External search requires measured eviden
 
 ## 4. Attachment HTTP contract — 08B
 
-### Implemented foundation and pending release gates
+### Implemented contract and remaining rollout gates
 
-An [independent ClamAV scanner design](08b-independent-scanner.md) now describes
-a proposed standalone service. Its plan does not enable uploads or complete the
-remaining scan/promotion/provider gates below.
+The [message attachment completion SPEC](08b-message-attachments.md) defines
+schema13: atomic claims, file-only messages, typed REST/WS metadata, signed final
+GET, attached retention and transactional message/account cleanup. The matching
+[frontend contract](../docs/attachments.md) gives current requests and responses.
 
-Migration 9 implements reservations, unverified metadata, idempotent complete/cancel,
-attachment aggregate sequences, independent outbox purposes and fenced cleanup.
-Public initiation now issues quarantine PUT tickets when explicitly enabled via
-`ATTACHMENT_UPLOAD_ENABLED=true`, requiring configured R2 and an enabled processor;
-otherwise it returns503. Migration11 added the initial scanner consumer and
-migration12 adds separate artifact metadata for v2 processing/promotion;
-see the [backend integration contract](08b-scanner-integration.md). No attached
-state, download, message binding or realtime attachment event exists yet. Nonempty
-message `attachment_ids` returns503 before persistence. The table below describes
-the intended complete08B contract; its download route is not registered yet.
+Migrations9/11/12 provide reservation, cleanup, processing and artifact metadata.
+Admission remains opt-in with configured R2, processing and
+`ATTACHMENT_UPLOAD_ENABLED=true`. Lightweight JPEG/PNG rewriting and strict TXT
+are Done; ClamAV is deferred indefinitely, not a release gate. Local real R2
+processing/final GET is verified; hosted schema13 end-to-end smoke is pending.
 
-Room/account cascades currently set attachment parent references to NULL, retaining
-opaque object identity. The sweeper atomically creates cleanup intent and marks a
-tombstone deleting after the deadline, including orphaned/scanning reservations.
-This supports reservation cleanup; atomic cleanup for future attached messages and
-account/lifecycle producers remains pending. Scan intents are consumed only with explicit scanner/R2 configuration and
-ATTACHMENT_SCAN_ENABLED=true; complete itself never means verified. No runtime
-path enables initiation yet. Ready retention/dual-object cleanup and lease budgets
-are specified in the backend integration contract.
+Schema13 retains opaque object identity across room/message/account cascades and
+reconciles attached orphans. Live bindings do not expire at the ready TTL. Stop
+older backend/cleanup binaries before admitting attached traffic; do not force a
+downgrade past the live-binding guard.
 
 
 IDs are positive int64 JSON numbers. Room actions require current membership;

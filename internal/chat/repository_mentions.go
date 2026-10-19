@@ -89,6 +89,11 @@ func (r *explicitRepository) SendMessageAtomic(ctx context.Context, userID, room
                 FROM messages m LEFT JOIN users u ON u.id=m.user_id WHERE m.id=$1 AND m.room_id=$2`, saved.MessageID, roomID); e != nil {
 				return nil, false, fmt.Errorf("chat send retry message: %w", e)
 			}
+			if r.attachments {
+				if e := loadMessageAttachments(ctx, tx, msg); e != nil {
+					return nil, false, e
+				}
+			}
 			if e := tx.Commit(); e != nil {
 				return nil, false, fmt.Errorf("chat send retry commit: %w", e)
 			}
@@ -108,6 +113,14 @@ func (r *explicitRepository) SendMessageAtomic(ctx context.Context, userID, room
         RETURNING id,created_at,revision,COALESCE((SELECT username FROM users WHERE id=messages.user_id),'[deleted user]')`, roomID, userID, req.Content).Scan(&msg.ID, &msg.CreatedAt, &msg.Revision, &msg.Username); err != nil {
 		return nil, false, fmt.Errorf("chat send message: %w", err)
 	}
+	if r.attachments {
+		if e := claimAttachments(ctx, tx, userID, roomID, msg.ID, req.AttachmentIDs); e != nil {
+			return nil, false, e
+		}
+		if e := loadMessageAttachments(ctx, tx, msg); e != nil {
+			return nil, false, e
+		}
+	}
 	for _, id := range req.MentionUserIDs {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO message_mentions(message_id,room_id,user_id,membership_generation) VALUES($1,$2,$3,$4)`, msg.ID, roomID, id, generations[id]); err != nil {
 			return nil, false, fmt.Errorf("chat send mention: %w", err)
@@ -122,6 +135,11 @@ func (r *explicitRepository) SendMessageAtomic(ctx context.Context, userID, room
 	if req.IdempotencyKey != "" {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO message_send_keys(user_id,request_key,request_hash,message_id) VALUES($1,$2,$3,$4)`, userID, req.IdempotencyKey, hash, msg.ID); err != nil {
 			return nil, false, fmt.Errorf("chat send retry insert: %w", err)
+		}
+	}
+	if r.attachments {
+		if e := appendMessageIntent(ctx, tx, msg, "message.created"); e != nil {
+			return nil, false, e
 		}
 	}
 	if err := tx.Commit(); err != nil {

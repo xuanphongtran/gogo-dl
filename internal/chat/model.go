@@ -3,8 +3,10 @@ package chat
 
 import (
 	"encoding/json"
-	"github.com/lib/pq"
 	"time"
+
+	"github.com/lib/pq"
+	"github.com/xuanphongtran/gogo-dl/internal/attachment"
 )
 
 // RoomVisibility controls who can discover and join a room.
@@ -45,17 +47,17 @@ type Room struct {
 
 // Message is a single chat message sent within a room.
 type Message struct {
-	MentionUserIDs pq.Int64Array `db:"mention_user_ids" json:"mention_user_ids"`
-	Attachments    []struct{}    `db:"-" json:"attachments"`
-	ID             int64         `db:"id"         json:"id"`
-	RoomID         int64         `db:"room_id"    json:"room_id"`
-	UserID         *int64        `db:"user_id"    json:"user_id" extensions:"x-nullable"`
-	Username       string        `db:"username"   json:"username"` // joined from users table
-	Content        string        `db:"content"    json:"content"`
-	CreatedAt      time.Time     `db:"created_at" json:"created_at"`
-	Revision       int64         `db:"revision"   json:"revision" minimum:"1"`
-	EditedAt       *time.Time    `db:"edited_at"  json:"edited_at" extensions:"x-nullable" format:"date-time"`
-	DeletedAt      *time.Time    `db:"deleted_at" json:"deleted_at" extensions:"x-nullable" format:"date-time"`
+	MentionUserIDs pq.Int64Array   `db:"mention_user_ids" json:"mention_user_ids"`
+	Attachments    attachment.List `db:"attachments" json:"attachments"`
+	ID             int64           `db:"id"         json:"id"`
+	RoomID         int64           `db:"room_id"    json:"room_id"`
+	UserID         *int64          `db:"user_id"    json:"user_id" extensions:"x-nullable"`
+	Username       string          `db:"username"   json:"username"` // joined from users table
+	Content        string          `db:"content"    json:"content"`
+	CreatedAt      time.Time       `db:"created_at" json:"created_at"`
+	Revision       int64           `db:"revision"   json:"revision" minimum:"1"`
+	EditedAt       *time.Time      `db:"edited_at"  json:"edited_at" extensions:"x-nullable" format:"date-time"`
+	DeletedAt      *time.Time      `db:"deleted_at" json:"deleted_at" extensions:"x-nullable" format:"date-time"`
 }
 
 // MarshalJSON keeps additive collections empty rather than null on text messages.
@@ -65,7 +67,7 @@ func (m Message) MarshalJSON() ([]byte, error) {
 		m.MentionUserIDs = pq.Int64Array{}
 	}
 	if m.Attachments == nil {
-		m.Attachments = []struct{}{}
+		m.Attachments = attachment.List{}
 	}
 	return json.Marshal(plain(m))
 }
@@ -125,16 +127,16 @@ type ListInvitationsQuery struct {
 type SendMessageRequest struct {
 	MentionUserIDs []int64 `json:"mention_user_ids,omitempty"`
 	IdempotencyKey string  `json:"-" swaggerignore:"true"`
-	// AttachmentIDs are reserved for scanner-backed attachment binding.
-	AttachmentIDs []int64 `json:"attachment_ids,omitempty"`
-	// Content must be nonblank and at most 4000 UTF-8 bytes after trimming whitespace.
-	Content string `json:"content" binding:"required,min=1,max=4000"`
+	// AttachmentIDs claim up to five own ready files in this room; Idempotency-Key required.
+	AttachmentIDs []int64 `json:"attachment_ids,omitempty" binding:"omitempty,max=5,dive,min=1"`
+	// Content may be blank only when attachment_ids is nonempty; at most 4000 UTF-8 bytes.
+	Content string `json:"content" binding:"max=4000"`
 }
 
 // EditMessageRequest contains new content and the message revision being edited.
 type EditMessageRequest struct {
-	// Content must be nonblank and at most 4000 UTF-8 bytes after trimming whitespace.
-	Content  string `json:"content" binding:"required,min=1,max=4000"`
+	// Content may be blank only when the message already has attachments; at most 4000 UTF-8 bytes.
+	Content  string `json:"content" binding:"max=4000"`
 	Revision int64  `json:"revision" binding:"required,min=1"`
 }
 
