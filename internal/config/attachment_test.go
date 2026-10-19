@@ -69,3 +69,45 @@ func TestScannerIntegrationConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestUploadRequiresConfiguredScanWorker(t *testing.T) {
+	for _, tt := range []struct {
+		name              string
+		scan, r2, scanner bool
+		bad               bool
+	}{
+		{"enabled", true, true, true, false},
+		{"no worker", false, true, true, true},
+		{"no R2", true, false, true, true},
+		{"no scanner", true, true, false, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			setConfigBaseline(t)
+			t.Setenv("ATTACHMENT_UPLOAD_ENABLED", "true")
+			t.Setenv("ATTACHMENT_SCAN_ENABLED", "false")
+			if tt.scan {
+				t.Setenv("ATTACHMENT_SCAN_ENABLED", "true")
+			}
+			for _, key := range []string{"R2_ACCOUNT_ID", "R2_BUCKET", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "SCANNER_URL", "SCANNER_API_TOKEN"} {
+				t.Setenv(key, "")
+			}
+			if tt.r2 {
+				t.Setenv("R2_ACCOUNT_ID", strings.Repeat("a", 32))
+				t.Setenv("R2_BUCKET", "private-chat")
+				t.Setenv("R2_ACCESS_KEY_ID", "test-key")
+				t.Setenv("R2_SECRET_ACCESS_KEY", "test-secret")
+			}
+			if tt.scanner {
+				t.Setenv("SCANNER_URL", "http://scanner:10000")
+				t.Setenv("SCANNER_API_TOKEN", strings.Repeat("s", 32))
+			}
+			cfg, err := Load("")
+			if (err != nil) != tt.bad {
+				t.Fatalf("configuration error=%v", err)
+			}
+			if err == nil && !cfg.AttachmentUploadEnabled {
+				t.Fatal("upload flag not enabled")
+			}
+		})
+	}
+}

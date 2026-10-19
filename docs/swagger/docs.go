@@ -477,7 +477,7 @@ const docTemplate = `{
                 "tags": [
                     "attachments"
                 ],
-                "summary": "Reserve attachment upload (unavailable while scanner is pending)",
+                "summary": "Reserve a private quarantine upload (requires upload admission enabled)",
                 "parameters": [
                     {
                         "type": "integer",

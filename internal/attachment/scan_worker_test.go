@@ -2,6 +2,8 @@ package attachment
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"testing"
 	"time"
@@ -14,13 +16,15 @@ type scanRepoFake struct {
 	row       *Reservation
 	outcome   string
 	finishErr error
+	artifact  *ProcessedMetadata
 }
 
 func (r *scanRepoFake) PrepareScan(context.Context, *outbox.Job) (*Reservation, error) {
 	return r.row, nil
 }
-func (r *scanRepoFake) FinishScan(_ context.Context, _ *outbox.Job, outcome string) error {
+func (r *scanRepoFake) FinishScan(_ context.Context, _ *outbox.Job, outcome string, artifact *ProcessedMetadata) error {
 	r.outcome = outcome
+	r.artifact = artifact
 	return r.finishErr
 }
 
@@ -47,12 +51,14 @@ type scanStoreFake struct {
 	body     []byte
 	promoted bool
 	err      error
+	output   []byte
 }
 
 func (s *scanStoreFake) ReadQuarantine(context.Context, *Reservation) ([]byte, error) {
 	return s.body, s.err
 }
-func (s *scanStoreFake) Promote(context.Context, *Reservation, []byte) error {
+func (s *scanStoreFake) Promote(_ context.Context, _ *Reservation, body []byte) error {
+	s.output = append([]byte(nil), body...)
 	s.promoted = true
 	return s.err
 }
@@ -61,13 +67,25 @@ type malwareFake struct {
 	verdict string
 	err     error
 	cancel  context.CancelFunc
+	output  []byte
 }
 
-func (s malwareFake) Scan(context.Context, []byte) (string, error) {
+func (s malwareFake) Process(_ context.Context, body []byte, filename, media string) (*scannerapi.Artifact, error) {
 	if s.cancel != nil {
 		s.cancel()
 	}
-	return s.verdict, s.err
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.verdict != "clean" {
+		return nil, scannerapi.ErrRejected
+	}
+	output := body
+	if s.output != nil {
+		output = s.output
+	}
+	inHash, outHash := sha256.Sum256(body), sha256.Sum256(output)
+	return &scannerapi.Artifact{Verdict: "accepted", InputSHA256: hex.EncodeToString(inHash[:]), InputSizeBytes: int64(len(body)), Body: output, SHA256: hex.EncodeToString(outHash[:]), SizeBytes: int64(len(output)), ContentType: media, Engine: "sanitize", Policy: "sanitize-v1", ProcessedAt: time.Now().UTC()}, nil
 }
 func TestScanWorkerFailsClosed(t *testing.T) {
 	for _, tt := range []struct {
@@ -76,7 +94,7 @@ func TestScanWorkerFailsClosed(t *testing.T) {
 		badBody, cancel, promote      bool
 	}{
 		{name: "clean", verdict: "clean", outcome: "clean", promote: true},
-		{name: "infected", verdict: "infected", outcome: "infected"},
+		{name: "infected", verdict: "infected", outcome: "scanner_rejected"},
 		{name: "invalid bytes", badBody: true, outcome: "invalid_content"},
 		{name: "unsupported scanner result", scanErr: scannerapi.ErrRejected, outcome: "scanner_rejected"},
 		{name: "outage", scanErr: scannerapi.ErrUnavailable, retry: "scanner_unavailable"},
@@ -115,5 +133,20 @@ func TestScanWorkerStopsOnCancellation(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("scan worker leaked")
+	}
+}
+
+func TestWorkerPromotesProcessedBytesPreservingOriginal(t *testing.T) {
+	original, processed := []byte("original"), []byte("rewritten")
+	row := scanReservation(original, "text/plain")
+	repo := &scanRepoFake{row: row}
+	queue := &scanQueueFake{job: &outbox.Job{AttachmentID: 1}}
+	store := &scanStoreFake{body: original}
+	NewScanWorker(repo, queue, store, malwareFake{verdict: "clean", output: processed}).processScan(context.Background())
+	if string(store.output) != string(processed) || repo.artifact == nil || repo.artifact.SizeBytes != int64(len(processed)) || repo.outcome != "clean" {
+		t.Fatal("processed artifact not finalized")
+	}
+	if row.SizeBytes != int64(len(original)) || row.SHA256 != scanReservation(original, "text/plain").SHA256 {
+		t.Fatal("original quota/checksum mutated")
 	}
 }

@@ -497,26 +497,28 @@ Set all four variables together to run the cleanup worker:
 Use the account's 32-character lowercase hex ID and a private bucket name.
 Store credentials in local env files or Render secrets, never in Git.
 Docker Compose loads these through its existing `configs/.env` entry.
-Keep `ATTACHMENT_UPLOAD_ENABLED=false`; setting it true fails startup while the
-remaining lifecycle and real R2 capability checks are pending. Without R2 configuration the
+Upload admission defaults to false. Set `ATTACHMENT_UPLOAD_ENABLED=true` with
+`ATTACHMENT_SCAN_ENABLED=true` and complete R2/scanner settings to issue tickets.
+This enables quarantine uploads only. Without R2 configuration the
 cleanup worker is inactive and reservations retain quota/storage until configured.
 
 Authenticated routes under `/api/v1`:
 
 | Method | Route | Current behavior |
 | --- | --- | --- |
-| POST | `/rooms/:id/attachments/uploads` | Validates metadata + `Idempotency-Key`, then 503 (admission closed) |
+| POST | `/rooms/:id/attachments/uploads` | 201 private quarantine PUT ticket when enabled; 503 when disabled |
 | GET | `/rooms/:id/attachments/:attachment_id` | 200 current metadata (`verified` only when ready), uploader and current member only |
 | POST | `/rooms/:id/attachments/:attachment_id/complete` | 202 scan request/current state, never a clean verdict |
 | DELETE | `/rooms/:id/attachments/:attachment_id` | 204 idempotent cancel and delayed cleanup |
 
 Upload metadata fields: `filename`, `content_type`, `size_bytes`, `sha256`.
-Allowed types: JPEG, PNG, plain text; size 1–10 MiB; checksum 64 hex characters.
+Allowed extension/type pairs: `.jpg`/`.jpeg` + JPEG, `.png` + PNG, `.txt` + plain
+text (extension case-insensitive); size 1–10 MiB; checksum 64 hex characters.
 Retry keys are 16–128 printable ASCII bytes. Quotas are 100 MiB and 10 outstanding
 reservations per user, 10 GiB per room. Nonempty message `attachment_ids` returns
 503 before persistence; ordinary text messages continue to work.
 
-Each reservation owns a unique `quarantine/<uuid>` key. Future PUT credentials bind
+Each reservation owns a unique `quarantine/<uuid>` key. PUT credentials bind
 `If-None-Match: *`, Content-Type and Content-Length with a five-minute deadline.
 Content-Length is set automatically by browsers and must match the declared size.
 The cleanup worker waits until this deadline plus ten minutes, keeps quota charged
@@ -530,8 +532,7 @@ pending jobs, and `attachments` for orphaned/deleting rows and reserved bytes.
 Investigate the storage failure before any operator-controlled replay; dead jobs
 retain their keys and quota. No automatic retention policy removes these records.
 Real R2 conditional PUT, concurrent writes, signed size/type headers, browser CORS,
-late writes and hosted scanner/promotion checks are required before opening
-admission. See [spec](spec/08-rich-messaging.md) and [plan](plan/08-rich-messaging.md).
+late writes and hosted scanner/promotion remain operational rollout checks. See [spec](spec/08-rich-messaging.md) and [plan](plan/08-rich-messaging.md).
 
 ## Phase 08C: mentions and private inbox
 
@@ -560,7 +561,7 @@ sorted. Self mentions remain on the message but generate no notification.
 `Idempotency-Key` must contain 16–128 printable ASCII bytes; reusing a retained key
 with different normalized room/content/recipient data returns `409`. Retries
 recheck current room authorization. Content remains required; `attachment_ids`
-are reserved and rejected with `503` while scanner admission is closed.
+are reserved and rejected with `503` until message attachment binding is implemented.
 
 Notification DTOs contain `id`, `kind`, `room_id`, `message_id`, `created_at`,
 nullable `read_at`, and `availability` (`available` or `deleted`). Other users'
@@ -600,12 +601,17 @@ URL credentials, paths, query strings, redirects and environment proxies are not
 accepted. Optional scanner settings must be a complete valid pair even when off.
 
 The single sequential worker verifies conditional R2 reads, exact 10 MiB-bounded
-bytes/hash, full JPEG/PNG decoding (max 25 megapixels) or UTF-8 nonbinary text, then
-requires a scanner verdict matching the same bytes. It conditionally creates and
-reads back `final/<reservation UUID>` before atomically committing ready plus scan
+bytes/hash, full JPEG/PNG decoding (max 4 megapixels) or UTF-8 nonbinary text, then
+calls the versioned `/v2/process` contract. Default `sanitize-v1` rewrites images;
+optional `clamav-v1` returns original bytes after a clean scan. Both bind input and
+output identity. The worker conditionally creates and reads back processed bytes
+at `final/<reservation UUID>` before atomically committing ready plus scan
 acknowledgement. Scan jobs have a 60 s lease/45 s work budget; other purpose leases
 remain 30 s. Ready unattached retention is 24 h. Cancellation, lost leases, removal,
-invalid/infected bytes and untrusted/failed responses never publish ready.
+invalid/rejected content and untrusted/failed responses never publish ready.
+Sanitizer acceptance is not an antivirus verdict. `verified` means the named
+processing policy passed. Migration `000012` keeps original upload metadata/quota
+unchanged and stores final artifact hash/size/type/engine/policy separately.
 
 Cleanup retains the original quarantine identity through cascades and always
 removes both deterministic quarantine/final keys before releasing quota, including
@@ -613,13 +619,78 @@ crashes after promotion. Cleanup has a 12 s work budget within its 30 s lease. B
 physical objects may exist during retention; budget/monitor provider bytes and
 cleanup backlog separately from logical reservation quota. Do not run older cleanup
 binaries against promoted objects. Migration `000011` down refuses live prepared scans;
-never use production down/force to bypass that guard.
+never use production down/force to bypass that guard. Migration `000012` down
+also refuses live sanitized artifacts because schema11 cannot interpret them.
 
-**Upload admission remains closed:** `ATTACHMENT_UPLOAD_ENABLED=true` still fails
-startup. Real R2 create-only/CORS/late-write/grace proofs, message attachment binding,
-authorized download and lifecycle producers remain release gates. Configuring this
-worker does not complete 08B or enable attachment sends. Network/provider operations
+**Upload admission is opt-in:** `ATTACHMENT_UPLOAD_ENABLED=true` requires configured
+R2 and an enabled configured processing worker. Ticket creation and processing do
+not complete 08B: hosted CORS/late-write/grace verification, message binding,
+authorized download and attached lifecycle producers remain separate work. Network/provider operations
 are outside DB transactions and Hub; worker cancellation is joined at shutdown.
 
 See [scanner integration SPEC](spec/08b-scanner-integration.md) and
 [plan](plan/08b-scanner-integration.md) for verification and rollout boundaries.
+
+
+### Deploy lightweight processing (08B)
+
+1. Stop/drain old backend scan workers before migration `000012`; schema11 workers
+   cannot finalize ready without artifact metadata. Temporarily deploy with
+   `ATTACHMENT_UPLOAD_ENABLED=false` and `ATTACHMENT_SCAN_ENABLED=false`, let
+   claims drain, then upgrade/re-enable.
+   Deploy the **gogo-scanner** repo first using its default Dockerfile (static Go,
+   `sanitize` mode). Configure `SCANNER_MODE=sanitize`,
+   `SCANNER_LISTEN_ADDR=0.0.0.0:10000`, `GOMEMLIMIT=320MiB` and the shared
+   `SCANNER_API_TOKEN`; health path `/readyz`. It needs no ClamAV/signature volume.
+2. Deploy this backend with migration `000012`, existing R2 settings and
+   `SCANNER_URL=https://<scanner-service>.onrender.com` (base URL only),
+   `SCANNER_API_TOKEN`, `ATTACHMENT_SCAN_ENABLED=true` and
+   `ATTACHMENT_UPLOAD_ENABLED=true` to enable quarantine tickets. A developer's `127.0.0.1` is unreachable
+   from Render. The processor's 22-second caller timeout requires a responsive
+   service; hosted cold-start behavior remains a deployment check.
+3. R2 IP filtering must permit the backend service's outbound IPs as well as any
+   local test IP. Local provider smoke does not prove Render egress access.
+4. Drain in-flight scan jobs before changing processor policy/codec or engine;
+   immutable final artifacts may differ across versions. Retry never overwrites.
+   To restore ClamAV, deploy scanner `Dockerfile.clamav` with `SCANNER_MODE=clamav`
+   and sufficient RAM/signatures. The backend and v2 API stay unchanged.
+
+No PDF/Office/SVG/HTML/archives are added. Images are re-encoded without metadata;
+EXIF orientation/color metadata is not preserved, so presentation may change.
+Public upload, authorized download and message binding remain separate gates.
+
+Local real-provider test (creates/deletes only random owned object keys):
+
+```sh
+PROCESSOR_R2_SMOKE=true PROCESSOR_SMOKE_ENV_FILE=.env.local \
+SCANNER_URL=http://127.0.0.1:8091 \
+go test -count=1 -timeout=180s ./internal/attachment -run TestProcessingRealR2 -v
+```
+
+The optional env file supplies R2/service credentials without logging them.
+See [lightweight SPEC](spec/08b-lightweight-processing.md) and
+[implementation/evidence](plan/08b-lightweight-processing.md).
+
+
+### Frontend upload flow
+
+1. Compute SHA-256 and POST `/api/v1/rooms/{id}/attachments/uploads` with Bearer
+   authentication, a16–128 character `Idempotency-Key` and
+   `{filename,content_type,size_bytes,sha256}`. Only current room members may upload.
+2. Use the returned short-lived `upload_url`, method `PUT` and headers to upload
+   raw bytes directly to private R2. Do not attach the user JWT to R2 requests.
+   Browsers set Content-Length automatically. Retrying a successful create-only
+   PUT returns412; do not overwrite or request a new key for the same attempt.
+3. After successful PUT, POST `/api/v1/rooms/{id}/attachments/{attachment_id}/complete`.
+   Poll GET of the same attachment for `scanning`, `ready` or `rejected`.
+   `ready` means processing policy passed, not an antivirus guarantee. Metadata
+   size/hash describe original upload; output metadata remains internal.
+4. DELETE that attachment route to cancel; cleanup waits for upload expiry/grace.
+   Unattached ready files expire after24h. Download and sending attachment IDs in
+   messages are not implemented yet.
+
+Configure bucket CORS for your exact frontend origins and PUT, permitting
+Content-Type and If-None-Match; otherwise browser uploads fail despite successful
+backend ticket creation. Never expose the bucket publicly or log/cache tickets.
+Keep cleanup running and monitor scan/cleanup dead jobs; scanner outages can
+leave uploads queued until retry budget is exhausted.

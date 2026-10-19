@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"regexp"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/xuanphongtran/gogo-dl/internal/outbox"
@@ -13,7 +14,7 @@ import (
 
 type scanRepository struct{ db *sqlx.DB }
 
-// NewScanRepository creates the schema-11 fenced scan repository.
+// NewScanRepository creates the schema-12 fenced scan repository.
 func NewScanRepository(db *sqlx.DB) ScanRepository { return &scanRepository{db} }
 func scanLease(ctx context.Context, tx *sqlx.Tx, job *outbox.Job) error {
 	if job == nil || job.AttachmentID <= 0 {
@@ -122,7 +123,26 @@ func (r *scanRepository) PrepareScan(ctx context.Context, job *outbox.Job) (row 
 	}
 	return row, nil
 }
-func (r *scanRepository) FinishScan(ctx context.Context, job *outbox.Job, outcome string) (err error) {
+
+// ProcessedMetadata describes the immutable final artifact, separate from quota input.
+type ProcessedMetadata struct {
+	SHA256      string
+	SizeBytes   int64
+	ContentType string
+	Engine      string
+	Policy      string
+}
+
+func (p *ProcessedMetadata) valid() bool {
+	return p != nil && p.SizeBytes > 0 && p.SizeBytes <= 10<<20 && regexp.MustCompile(`^[a-f0-9]{64}$`).MatchString(p.SHA256) &&
+		(p.ContentType == "image/png" || p.ContentType == "image/jpeg" || p.ContentType == "text/plain") &&
+		((p.Engine == "sanitize" && p.Policy == "sanitize-v1") || (p.Engine == "clamav" && p.Policy == "clamav-v1"))
+}
+func (r *scanRepository) FinishScan(ctx context.Context, job *outbox.Job, outcome string, artifact *ProcessedMetadata) (err error) {
+	if (outcome == "clean" && !artifact.valid()) || (outcome != "clean" && artifact != nil) {
+		return fmt.Errorf("attachment scan invalid artifact metadata")
+	}
+
 	if outcome != "clean" && outcome != "infected" && outcome != "invalid_content" && outcome != "scanner_rejected" {
 		return fmt.Errorf("attachment scan invalid outcome")
 	}
@@ -142,11 +162,20 @@ func (r *scanRepository) FinishScan(ctx context.Context, job *outbox.Job, outcom
 		return err
 	}
 	if row != nil {
+		var hash, media, engine, policy any
+		var size any
+		if artifact != nil {
+			if artifact.ContentType != row.ContentType || (artifact.Engine == "clamav" && (artifact.SHA256 != row.SHA256 || artifact.SizeBytes != row.SizeBytes)) {
+				return fmt.Errorf("attachment scan artifact identity mismatch")
+			}
+			hash, size, media, engine, policy = artifact.SHA256, artifact.SizeBytes, artifact.ContentType, artifact.Engine, artifact.Policy
+		}
 		result, err := tx.ExecContext(ctx, `UPDATE attachments SET
  state=CASE WHEN $2='clean' THEN 'ready' ELSE 'rejected' END,
+ processed_sha256=$3,processed_size_bytes=$4,processed_content_type=$5,processing_engine=$6,processing_policy=$7,
  scan_completed_at=clock_timestamp(),scan_error=CASE WHEN $2='clean' THEN NULL ELSE $2 END,
  cleanup_after=CASE WHEN $2='clean' THEN GREATEST(cleanup_after,clock_timestamp()+interval '24 hours') ELSE cleanup_after END
- WHERE id=$1 AND scan_started_at IS NOT NULL`, row.ID, outcome)
+ WHERE id=$1 AND scan_started_at IS NOT NULL`, row.ID, outcome, hash, size, media, engine, policy)
 		if err != nil {
 			return fmt.Errorf("attachment scan persist: %w", err)
 		}

@@ -13,9 +13,6 @@ func (c *Config) loadAttachments() error {
 	if err != nil {
 		return fmt.Errorf("config: invalid ATTACHMENT_UPLOAD_ENABLED: %w", err)
 	}
-	if c.AttachmentUploadEnabled {
-		return fmt.Errorf("config: attachment upload admission requires complete attachment lifecycle and R2 capability verification")
-	}
 	c.R2AccountID = getEnv("R2_ACCOUNT_ID", "")
 	c.R2Bucket = getEnv("R2_BUCKET", "")
 	c.R2AccessKeyID = getEnv("R2_ACCESS_KEY_ID", "")
@@ -44,6 +41,9 @@ func (c *Config) loadScanner() error {
 		if c.ScannerAPIToken == c.JWTAccessSecret || c.ScannerAPIToken == c.JWTRefreshSecret {
 			return fmt.Errorf("config: scanner credential must differ from JWT secrets")
 		}
+	}
+	if c.AttachmentUploadEnabled && !c.AttachmentScanEnabled {
+		return fmt.Errorf("config: upload admission requires ATTACHMENT_SCAN_ENABLED")
 	}
 	if c.AttachmentScanEnabled && (c.R2AccountID == "" || c.ScannerURL == "" || c.ScannerAPIToken == "") {
 		return fmt.Errorf("config: scan worker requires R2 and scanner settings")

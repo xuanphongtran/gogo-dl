@@ -1,3 +1,7 @@
+> Updated by [lightweight processing](08b-lightweight-processing.md): v2 artifacts
+> replace the same-byte-only worker contract. The original integration below
+> describes the ClamAV v1 baseline.
+
 # 08B scanner integration implementation plan
 
 **SPEC:** [Backend scanner integration](../spec/08b-scanner-integration.md).

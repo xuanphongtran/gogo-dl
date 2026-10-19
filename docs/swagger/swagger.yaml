@@ -943,7 +943,7 @@ paths:
             $ref: '#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError'
       security:
       - BearerAuth: []
-      summary: Reserve attachment upload (unavailable while scanner is pending)
+      summary: Reserve a private quarantine upload (requires upload admission enabled)
       tags:
       - attachments
   /api/v1/rooms/{id}/invitations:
