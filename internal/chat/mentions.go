@@ -16,7 +16,7 @@ type mentionSender interface {
 }
 
 func normalizeMentionSend(roomID int64, content string, req *SendMessageRequest) (*SendMessageRequest, string, error) {
-	if roomID <= 0 || len(req.MentionUserIDs) > 10 {
+	if roomID <= 0 || len(req.MentionUserIDs) > 10 || len(req.AttachmentIDs) > 5 {
 		return nil, "", apperror.ErrInvalidRequest
 	}
 	ids := slices.Clone(req.MentionUserIDs)
@@ -26,8 +26,18 @@ func normalizeMentionSend(roomID int64, content string, req *SendMessageRequest)
 			return nil, "", apperror.ErrInvalidRequest
 		}
 	}
+	files := slices.Clone(req.AttachmentIDs)
+	slices.Sort(files)
+	for i, id := range files {
+		if id <= 0 || (i > 0 && files[i-1] == id) {
+			return nil, "", apperror.ErrInvalidRequest
+		}
+	}
+	if files == nil {
+		files = []int64{}
+	}
 	key := req.IdempotencyKey
-	if len(ids) > 0 || key != "" {
+	if len(ids) > 0 || len(files) > 0 || key != "" {
 		if len(key) < 16 || len(key) > 128 {
 			return nil, "", apperror.ErrInvalidRequest
 		}
@@ -40,13 +50,13 @@ func normalizeMentionSend(roomID int64, content string, req *SendMessageRequest)
 	if ids == nil {
 		ids = []int64{}
 	}
-	normalized := &SendMessageRequest{Content: content, MentionUserIDs: ids, IdempotencyKey: key}
+	normalized := &SendMessageRequest{Content: content, MentionUserIDs: ids, AttachmentIDs: files, IdempotencyKey: key}
 	body, err := json.Marshal(struct {
 		RoomID      int64
 		Content     string
 		Mentions    []int64
 		Attachments []int64
-	}{roomID, content, ids, []int64{}})
+	}{roomID, content, ids, files})
 	if err != nil {
 		return nil, "", fmt.Errorf("chat send hash: %w", err)
 	}

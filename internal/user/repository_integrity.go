@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/xuanphongtran/gogo-dl/internal/attachment"
 
 	"github.com/lib/pq"
 	"github.com/xuanphongtran/gogo-dl/pkg/apperror"
@@ -16,18 +17,25 @@ import (
 // database foreign key so a concurrent room creation cannot leave an
 // ownerless room.
 func (r *postgresRepository) DeleteAccount(ctx context.Context, id int64) error {
+	_, err := r.DeleteAccountWithChanges(ctx, id)
+	return err
+}
+
+// DeleteAccountWithChanges commits file cleanup and returns content-free refresh references.
+func (r *postgresRepository) DeleteAccountWithChanges(ctx context.Context, id int64) (*attachment.AccountCleanup, error) {
+	var changes *attachment.AccountCleanup
 	ctx, span := otel.Tracer("gogo-dl/user").Start(ctx, "user.repository.DeleteAccount")
 	defer span.End()
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("user repo DeleteAccount begin: %w", err)
+		return nil, fmt.Errorf("user repo DeleteAccount begin: %w", err)
 	}
 
-	rollback := func(opErr error) error {
+	rollback := func(opErr error) (*attachment.AccountCleanup, error) {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
-			return fmt.Errorf("user repo DeleteAccount rollback: %v: %w", rollbackErr, opErr)
+			return nil, fmt.Errorf("user repo DeleteAccount rollback: %v: %w", rollbackErr, opErr)
 		}
-		return opErr
+		return nil, opErr
 	}
 
 	var ownsRoom bool
@@ -40,6 +48,12 @@ func (r *postgresRepository) DeleteAccount(ctx context.Context, id int64) error 
 		return rollback(apperror.ErrAccountOwnsRooms)
 	}
 
+	if r.attachments {
+		changes, err = attachment.ScheduleAccountCleanup(ctx, tx, id)
+		if err != nil {
+			return rollback(err)
+		}
+	}
 	res, err := tx.ExecContext(ctx, `DELETE FROM users WHERE id = $1`, id)
 	if err != nil {
 		if isForeignKeyViolation(err) {
@@ -57,9 +71,9 @@ func (r *postgresRepository) DeleteAccount(ctx context.Context, id int64) error 
 	}
 
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("user repo DeleteAccount commit: %w", err)
+		return nil, fmt.Errorf("user repo DeleteAccount commit: %w", err)
 	}
-	return nil
+	return changes, nil
 }
 
 func isForeignKeyViolation(err error) bool {

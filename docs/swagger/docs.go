@@ -1243,7 +1243,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Content must be nonblank and at most 4000 UTF-8 bytes after trimming whitespace.",
+                "description": "Content is required unless attachment_ids contains 1–5 own ready files; at most 4000 UTF-8 bytes.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1273,7 +1273,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Required for mentions; 16–128 printable ASCII bytes, retained for 24 hours",
+                        "description": "Required for mentions or attachments; 16–128 printable ASCII bytes, retained for 24 hours",
                         "name": "Idempotency-Key",
                         "in": "header"
                     }
@@ -1328,7 +1328,7 @@ const docTemplate = `{
                         }
                     },
                     "503": {
-                        "description": "Attachment scanner pending",
+                        "description": "Attachment capability unavailable",
                         "schema": {
                             "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
                         }
@@ -1499,7 +1499,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Content must be nonblank and at most 4000 UTF-8 bytes after trimming whitespace.",
+                "description": "Content may be blank only when the message retains attachments; at most 4000 UTF-8 bytes.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1580,6 +1580,83 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/rooms/{id}/messages/{message_id}/attachments/{attachment_id}/download": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "attachments"
+                ],
+                "summary": "Get a 60-second private download URL for a live message attachment",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Room ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Message ID",
+                        "name": "message_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Attachment ID",
+                        "name": "attachment_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_attachment.DownloadTicket"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_pkg_apperror.AppError"
                         }
@@ -2520,6 +2597,29 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "github_com_xuanphongtran_gogo-dl_internal_attachment.Summary": {
+            "type": "object",
+            "properties": {
+                "content_type": {
+                    "type": "string"
+                },
+                "filename": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "sha256": {
+                    "type": "string"
+                },
+                "size_bytes": {
+                    "type": "integer"
+                },
+                "verified": {
+                    "type": "boolean"
+                }
+            }
+        },
         "github_com_xuanphongtran_gogo-dl_internal_middleware.TokenPair": {
             "type": "object",
             "properties": {
@@ -2559,6 +2659,17 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "error": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_attachment.DownloadTicket": {
+            "type": "object",
+            "properties": {
+                "download_url": {
+                    "type": "string"
+                },
+                "expires_at": {
                     "type": "string"
                 }
             }
@@ -2702,15 +2813,13 @@ const docTemplate = `{
         "internal_chat.EditMessageRequest": {
             "type": "object",
             "required": [
-                "content",
                 "revision"
             ],
             "properties": {
                 "content": {
-                    "description": "Content must be nonblank and at most 4000 UTF-8 bytes after trimming whitespace.",
+                    "description": "Content may be blank only when the message already has attachments; at most 4000 UTF-8 bytes.",
                     "type": "string",
-                    "maxLength": 4000,
-                    "minLength": 1
+                    "maxLength": 4000
                 },
                 "revision": {
                     "type": "integer",
@@ -2811,7 +2920,7 @@ const docTemplate = `{
                 "attachments": {
                     "type": "array",
                     "items": {
-                        "type": "object"
+                        "$ref": "#/definitions/github_com_xuanphongtran_gogo-dl_internal_attachment.Summary"
                     }
                 },
                 "content": {
@@ -2983,22 +3092,19 @@ const docTemplate = `{
         },
         "internal_chat.SendMessageRequest": {
             "type": "object",
-            "required": [
-                "content"
-            ],
             "properties": {
                 "attachment_ids": {
-                    "description": "AttachmentIDs are reserved for scanner-backed attachment binding.",
+                    "description": "AttachmentIDs claim up to five own ready files in this room; Idempotency-Key required.",
                     "type": "array",
+                    "maxItems": 5,
                     "items": {
                         "type": "integer"
                     }
                 },
                 "content": {
-                    "description": "Content must be nonblank and at most 4000 UTF-8 bytes after trimming whitespace.",
+                    "description": "Content may be blank only when attachment_ids is nonempty; at most 4000 UTF-8 bytes.",
                     "type": "string",
-                    "maxLength": 4000,
-                    "minLength": 1
+                    "maxLength": 4000
                 },
                 "mention_user_ids": {
                     "type": "array",

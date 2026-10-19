@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -133,6 +134,24 @@ func TestProcessingRealR2(t *testing.T) {
 					t.Fatal("processed promotion/readback failed (details suppressed)")
 				}
 			}
+			ticket, err := r.PresignDownload(ctx, &DownloadObject{ObjectKey: row.ObjectKey, Filename: name, ContentType: artifact.ContentType, SizeBytes: artifact.SizeBytes, SHA256: artifact.SHA256})
+			if err != nil {
+				t.Fatal("download signing failed")
+			}
+			download, err := http.NewRequestWithContext(ctx, http.MethodGet, ticket.URL, nil)
+			if err != nil {
+				t.Fatal("download construction failed")
+			}
+			response, err := client.Do(download)
+			if err != nil {
+				t.Fatal("signed download transport failed (URL suppressed)")
+			}
+			downloaded, readErr := io.ReadAll(io.LimitReader(response.Body, (10<<20)+1))
+			response.Body.Close()
+			if readErr != nil || response.StatusCode != 200 || !bytes.Equal(downloaded, artifact.Body) || response.Header.Get("Content-Type") != artifact.ContentType || !strings.HasPrefix(response.Header.Get("Content-Disposition"), "attachment;") || response.Header.Get("Cache-Control") != "private, no-store" {
+				t.Fatal("signed processed download identity/headers failed")
+			}
+			t.Log("PASS signed final GET, processed bytes and safe response headers")
 			t.Log("PASS real quarantine → processor → immutable final → retry; owned cleanup scheduled")
 		})
 	}

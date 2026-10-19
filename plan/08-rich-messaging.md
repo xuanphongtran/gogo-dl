@@ -2,7 +2,7 @@
 
 **Priority:** P2
 
-**Status:** In progress — 08A Done locally; 08B R2 foundation implemented; 08C Done locally; scanner/provider and release verification gates pending
+**Status:** 08A/08C Done locally; 08B lightweight processor Done, schema13 binding/download/lifecycle implemented locally; hosted binding/download smoke pending. ClamAV deferred indefinitely.
 
 **Specification:** [Phase 8 SPEC](../spec/08-rich-messaging.md)
 
@@ -19,8 +19,9 @@ insufficient. Phase 5 verification completed locally on 2026-10-17; staging rema
 Defaults: PostgreSQL `simple` search, private Cloudflare R2 with create-only keys and separate
 fail-closed scan, durable in-app mention feed. Provider/cost/scanner capability,
 retention and measured quotas are readiness decisions. External email/push,
-file-content/global search and attachment-only sends are outside scope. This plan
-provisions nothing. 08A is implemented and locally verified; 08B foundation is implemented; full attachments remain pending and 08C is Done locally.
+file-content/global search are outside scope. File-only sends are included by the
+schema13 completion extension. This plan provisions nothing. 08A/08C are verified
+locally; 08B implementation is local, with schema13 rollout checks still pending.
 
 ## 2. Inspect and establish contracts
 
@@ -85,12 +86,14 @@ deployment was performed for this slice.
 Current extension: [lightweight processing](08b-lightweight-processing.md), default
 JPEG/PNG sanitization + TXT validation with optional ClamAV through the same v2
 contract. Quarantine ticket admission can now be enabled explicitly with R2 and
-scan-worker configuration; download/message binding and complete08B remain pending.
+scan-worker configuration; schema13 implements download/message binding locally; hosted smoke remains pending.
 
 Scanner follow-up proposal: [independent scanner SPEC](../spec/08b-independent-scanner.md)
 and [implementation plan](08b-independent-scanner.md). The standalone scanner is
 a separate project; backend integration is implemented and locally verified below.
-Real provider verification and upload activation remain pending.
+Real R2 processing and CORS/PUT are verified and upload admission is enabled on staging.
+ClamAV is deferred indefinitely; use the lightweight processor.
+Completion work: [message binding/download plan](08b-message-attachments.md).
 
 - [x] Migration 9: reservations, retained orphan tombstones, outbox intents,
       attachment aggregate counters and independent purpose leases.
@@ -101,48 +104,51 @@ Real provider verification and upload activation remain pending.
 - [x] Cleanup sweeper, bounded provider I/O, lease fencing, capped retries/backoff,
       terminal dead letters and joined cancellation at shutdown.
 - [x] Default-disabled runtime admission; explicit opt-in now requires configured
-      R2 + enabled processor. Message attachment IDs remain rejected.
-- [ ] Actual R2 staging capability/CORS/late-write and hosted scanner tests.
-      These remain rollout checks; user-authorized quarantine admission is opt-in.
+      R2 + enabled processor. Schema13 enables message attachment IDs.
+- [x] Actual R2 staging upload/processing/CORS verified; local real R2 final GET
+      verified for TXT/PNG/JPEG. Hosted binding/download and prolonged late-write
+      grace checks remain rollout gates.
 - [x] Ready scan/promotion slice: implementation and local verification tracked in
-      [backend scanner integration](08b-scanner-integration.md); hosted R2 proof remains open.
-- [ ] Attached states, signed download, atomic message binding/retry and
-      attached-message/account lifecycle producers. These require a later migration.
+      [backend scanner integration](08b-scanner-integration.md); hosted upload/processing proof recorded in the completion plan.
+- [x] Schema13 attached state, signed download, atomic binding/retry and
+      attached-message/account lifecycle producers implemented locally.
+- [ ] Deploy schema13 and verify authenticated hosted file-message/download lifecycle.
+- [ ] Execute schema13 downgrade guard test on the disposable DB (approval pending).
 
 The checklist below tracks the complete 08B target, rather than declaring the
-scanner-pending foundation a finished attachment feature.
+local implementation a finished hosted rollout.
 
 
 Expected files: focused attachment service/repository/transport and actual store/
 scanner adapters; send/lifecycle/account cleanup wiring; new schema; worker startup/
 shutdown/config; tests/docs. Keep concrete manual composition and existing layers.
 
-- [ ] Add reservations/state CAS, quotas, upload retry keys, claims and cleanup
+- [x] Add reservations/state CAS, quotas, upload retry keys, claims and cleanup
       tombstones with constraints/FKs/indexes matching actual queries.
-- [ ] Establish immutable `domain_outbox`, independent purpose progress and room/
+- [x] Establish immutable `domain_outbox`, independent purpose progress and room/
       user counters; define transactional sequence allocation, lock order/fencing.
-- [ ] Scoped direct initiation/asynchronous completion; never trust object/type/
+- [x] Scoped direct initiation/asynchronous completion; never trust object/type/
       verdict fields or assume presigned credentials are one-use.
-- [ ] Pin exact quarantine bytes through verify/scan/promotion to immutable private
+- [x] Pin exact quarantine bytes through verify/scan/promotion to immutable private
       final identity. Unknown/outage scan state cannot become ready.
-- [ ] Separate logical reservation from physical-object budget; retain quota and
+- [x] Separate logical reservation from physical-object budget; retain quota and
       URL admission charges after cancel until expiry + grace, delete all related objects
       and reconcile late uploads independently of object state.
-- [ ] Authorized signed download with 60-second bearer limitation/safe headers;
+- [x] Authorized signed download with 60-second bearer limitation/safe headers;
       DTOs/events/logs contain no provider keys or URLs.
-- [ ] Atomic send retry hash, owned ready room claim, message and intents;
+- [x] Atomic send retry hash, owned ready room claim, message and intents;
       same body/key returns existing authorized DTO, conflicting claims roll back.
-- [ ] Deletion/account/room cleanup intent precedes losing references; remove public
-      bindings, advance affected revisions/events and retain cleanup tombstones.
-- [ ] Bounded workers/deadlines, fenced claims/backoff, resource ownership and
+- [x] Message/account cleanup intent precedes losing references; remove public
+      bindings and advance revisions/events. Hard room/message cascades retain
+      object identity for orphan reconciliation by the sweeper.
+- [x] Bounded workers/deadlines, fenced claims/backoff, resource ownership and
       stop-claim shutdown; no external I/O inside DB transaction/Hub loop.
-- [ ] Config validation/default-disabled admission, env/container/docs updates.
+- [x] Config validation/default-disabled admission, env/container/docs updates.
 
-Gate: real provider/scanner proof, mutable-version attack, type/size/hash rejection,
-claim/send/rollback races, quota/cancel/late-upload/object-GC, scan outage and
-promotion/DB failure recovery all pass. Fakes supplement actual capability tests.
-R2 and standalone ClamAV are selected. Real provider/hosted proofs and remaining
-attachment lifecycle integrations are pending; full 08B is not Done.
+Gate: local atomic claim/rollback, retention, revocation, account/message cleanup,
+projection parity and real R2 signed final GET have passed focused tests. Final
+schema13 downgrade/quota fixture execution requires explicit temporary-DB approval;
+hosted end-to-end smoke requires deployment. Full 08B release remains open.
 
 ## 5. 08C — Mentions and private inbox
 
@@ -213,7 +219,7 @@ shutdown. Phase 9 adds broker and distributed load/failure gates.
 - [ ] HTTP/WS docs/config/retention/runbooks synchronized.
 - [ ] Review findings fixed; scan/capacity/access-window limitations disclosed.
 
-08A is Done locally. 08B foundation is implemented; scanner/provider release gates remain pending. 08C is Done locally after dedicated PostgreSQL/race verification and review fixes; Phase 05 is now verified locally; staging rollout remains a separate release gate.
+08A is Done locally. 08B binding/download is implemented locally; schema13 rollout verification remains pending. 08C is Done locally after dedicated PostgreSQL/race verification and review fixes; Phase 05 is now verified locally; staging rollout remains a separate release gate.
 
 ### 08B foundation verification — 2026-10-02
 

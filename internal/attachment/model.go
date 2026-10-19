@@ -28,6 +28,7 @@ type Metadata struct {
 // Reservation adds server-only identity needed for signing and cleanup.
 type Reservation struct {
 	Metadata
+	MessageID    *int64    `db:"message_id"`
 	RoomID       *int64    `db:"room_id"`
 	UploaderID   *int64    `db:"uploader_id"`
 	ObjectKey    string    `db:"object_key"`

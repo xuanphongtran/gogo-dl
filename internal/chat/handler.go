@@ -226,7 +226,7 @@ func (h *Handler) ListMessages(c *gin.Context) {
 }
 
 // SendMessage persists a message and triggers a realtime broadcast via the hub.
-// @Description  Content must be nonblank and at most 4000 UTF-8 bytes after trimming whitespace.
+// @Description  Content is required unless attachment_ids contains 1–5 own ready files; at most 4000 UTF-8 bytes.
 // @Summary      Send a message to a room
 // @Tags         messages
 // @Accept       json
@@ -234,7 +234,7 @@ func (h *Handler) ListMessages(c *gin.Context) {
 // @Security     BearerAuth
 // @Param        id    path  int64              true  "Room ID"
 // @Param        body  body  SendMessageRequest true  "Message payload"
-// @Param        Idempotency-Key header string false "Required for mentions; 16–128 printable ASCII bytes, retained for 24 hours"
+// @Param        Idempotency-Key header string false "Required for mentions or attachments; 16–128 printable ASCII bytes, retained for 24 hours"
 // @Failure      409 {object} apperror.AppError "Retry key reused for a different normalized request"
 // @Success      201  {object} Message
 // @Failure      400  {object} apperror.AppError "Invalid request, including content exceeding the message limit"
@@ -243,7 +243,7 @@ func (h *Handler) ListMessages(c *gin.Context) {
 // @Failure      404  {object} apperror.AppError
 // @Failure      413  {object} apperror.AppError "Entire HTTP request body exceeds HTTP_MAX_BODY_BYTES"
 // @Failure      500  {object} apperror.AppError
-// @Failure      503 {object} apperror.AppError "Attachment scanner pending"
+// @Failure      503 {object} apperror.AppError "Attachment capability unavailable"
 // @Router       /api/v1/rooms/{id}/messages [post]
 func (h *Handler) SendMessage(c *gin.Context) {
 	userID := middleware.MustGetUserID(c)

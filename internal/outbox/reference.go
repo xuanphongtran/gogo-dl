@@ -10,6 +10,7 @@ import (
 
 // Reference is a typed, content-free mention or private notification intent.
 type Reference struct {
+	Version        int64
 	Kind           string
 	AggregateType  string
 	AggregateID    int64
@@ -22,6 +23,10 @@ type Reference struct {
 
 // AppendReference shares the aggregate counter and independent delivery table.
 func AppendReference(ctx context.Context, tx *sqlx.Tx, ref Reference, purpose string) error {
+	version := ref.Version
+	if version <= 0 {
+		version = 1
+	}
 	id, err := uuid.NewRandom()
 	if err != nil {
 		return fmt.Errorf("outbox reference ID: %w", err)
@@ -34,8 +39,8 @@ func AppendReference(ctx context.Context, tx *sqlx.Tx, ref Reference, purpose st
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO domain_outbox(event_id,schema_version,kind,aggregate_type,aggregate_id,aggregate_seq,
         aggregate_version,room_id,user_id,message_id,membership_generation,notification_id)
-        VALUES($1,1,$2,$3,$4,$5,1,$6,$7,$8,$9,$10)`, id.String(), ref.Kind, ref.AggregateType, ref.AggregateID, seq,
-		ref.RoomID, ref.UserID, ref.MessageID, ref.Generation, ref.NotificationID); err != nil {
+        VALUES($1,1,$2,$3,$4,$5,$11,$6,$7,$8,$9,$10)`, id.String(), ref.Kind, ref.AggregateType, ref.AggregateID, seq,
+		ref.RoomID, ref.UserID, ref.MessageID, ref.Generation, ref.NotificationID, version); err != nil {
 		return fmt.Errorf("outbox reference append: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO domain_outbox_deliveries(event_id,purpose) VALUES($1,$2)`, id.String(), purpose); err != nil {

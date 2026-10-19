@@ -51,6 +51,10 @@ channels:
         $ref: '#/components/messages/left'
       chatMessage:
         $ref: '#/components/messages/chatMessage'
+      messageUpdated:
+        $ref: '#/components/messages/messageUpdated'
+      messageDeleted:
+        $ref: '#/components/messages/messageDeleted'
       membershipChanged:
         $ref: '#/components/messages/membershipChanged'
       invitation:
@@ -87,6 +91,8 @@ operations:
       - $ref: '#/channels/chat/messages/joined'
       - $ref: '#/channels/chat/messages/left'
       - $ref: '#/channels/chat/messages/chatMessage'
+      - $ref: '#/channels/chat/messages/messageUpdated'
+      - $ref: '#/channels/chat/messages/messageDeleted'
       - $ref: '#/channels/chat/messages/membershipChanged'
       - $ref: '#/channels/chat/messages/invitation'
       - $ref: '#/channels/chat/messages/notification'
@@ -118,23 +124,50 @@ components:
         client_id:
           type: string
       additionalProperties: false
+    attachmentData:
+      type: object
+      required: [id, filename, content_type, size_bytes, sha256, verified]
+      description: Processed file metadata; never includes provider identity or a signed URL. Verified means processing policy passed, not an antivirus guarantee.
+      properties:
+        id: {type: integer, format: int64}
+        filename: {type: string}
+        content_type: {type: string, enum: [image/jpeg, image/png, text/plain]}
+        size_bytes: {type: integer, format: int64}
+        sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+        verified: {type: boolean, const: true}
+      additionalProperties: false
     messageData:
       type: object
-      required: [id, user_id, username, content, created_at]
+      required: [id, room_id, user_id, username, content, created_at, revision, edited_at, deleted_at, mention_user_ids, attachments]
       properties:
-        id:
-          type: integer
-          format: int64
+        id: {type: integer, format: int64}
+        room_id: {type: integer, format: int64}
         user_id:
-          type: integer
-          format: int64
-        username:
-          type: string
+          oneOf:
+            - {type: integer, format: int64}
+            - {type: 'null'}
+        username: {type: string}
         content:
           type: string
-        created_at:
-          type: string
-          format: date-time
+          description: May be empty for file-only messages or tombstones.
+        created_at: {type: string, format: date-time}
+        revision: {type: integer, format: int64, minimum: 1}
+        edited_at:
+          oneOf:
+            - {type: string, format: date-time}
+            - {type: 'null'}
+        deleted_at:
+          oneOf:
+            - {type: string, format: date-time}
+            - {type: 'null'}
+        mention_user_ids:
+          type: array
+          items: {type: integer, format: int64}
+        attachments:
+          type: array
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/attachmentData'
       additionalProperties: false
     membershipData:
       type: object
@@ -272,7 +305,35 @@ components:
         - payload:
             type: message
             room_id: '1'
-            payload: {id: 42, user_id: 7, username: alice, content: Hello!, created_at: '2026-01-01T12:00:00Z'}
+            payload: {id: 42, room_id: 1, user_id: 7, username: alice, content: Hello!, created_at: '2026-01-01T12:00:00Z', revision: 1, edited_at: null, deleted_at: null, mention_user_ids: [], attachments: []}
+    messageUpdated:
+      name: messageUpdated
+      title: message_updated
+      description: Committed text edit or account attachment removal. Compare revisions; attachment metadata matches REST and contains no download URLs.
+      payload:
+        type: object
+        required: [type, room_id, payload]
+        properties:
+          type: {type: string, const: message_updated}
+          room_id:
+            $ref: '#/components/schemas/roomId'
+          payload:
+            $ref: '#/components/schemas/messageData'
+        additionalProperties: false
+    messageDeleted:
+      name: messageDeleted
+      title: message_deleted
+      description: Committed tombstone. Content is empty and attachments are empty. Fetch a fresh signed URL only for live bindings.
+      payload:
+        type: object
+        required: [type, room_id, payload]
+        properties:
+          type: {type: string, const: message_deleted}
+          room_id:
+            $ref: '#/components/schemas/roomId'
+          payload:
+            $ref: '#/components/schemas/messageData'
+        additionalProperties: false
     membershipChanged:
       name: membershipChanged
       title: Durable room membership changed

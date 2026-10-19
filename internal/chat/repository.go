@@ -56,8 +56,9 @@ type Repository interface {
 }
 
 type postgresRepository struct {
-	db       *sqlx.DB
-	mentions bool
+	db          *sqlx.DB
+	mentions    bool
+	attachments bool
 }
 
 // NewRepository creates a new PostgreSQL-backed chat Repository.
