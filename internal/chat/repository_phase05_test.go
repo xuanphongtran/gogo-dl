@@ -1,5 +1,28 @@
 package chat
 
-// PENDING: verify Phase 05 repository transactions, migration constraints,
-// invitation state transitions, and the deferred owner invariant from
-// migration 000005 against a disposable PostgreSQL database.
+import (
+	"errors"
+	"testing"
+
+	"github.com/xuanphongtran/gogo-dl/pkg/apperror"
+)
+
+func TestPhase05InvitePolicyRequiresCurrentManager(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		actor   *RoomMember
+		allowed bool
+	}{
+		{"removed", nil, false},
+		{"member", &RoomMember{Role: RoomRoleMember}, false},
+		{"moderator", &RoomMember{Role: RoomRoleModerator}, true},
+		{"owner", &RoomMember{Role: RoomRoleOwner}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := authorizeInviteManager(tc.actor)
+			if (tc.allowed && err != nil) || (!tc.allowed && !errors.Is(err, apperror.ErrForbidden)) {
+				t.Fatalf("authorization error=%v allowed=%v", err, tc.allowed)
+			}
+		})
+	}
+}

@@ -51,6 +51,10 @@ func (r *explicitRepository) ListRooms(ctx context.Context) ([]*Room, error) {
 func (r *explicitRepository) ListMessages(ctx context.Context, roomID int64, limit int, beforeID int64) ([]*Message, error) {
 	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.ListMessages")
 	defer span.End()
+	return listMessageHistory(ctx, r.db, r.mentions, roomID, limit, beforeID)
+}
+
+func listMessageHistory(ctx context.Context, queryer sqlx.QueryerContext, mentions bool, roomID int64, limit int, beforeID int64) ([]*Message, error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -62,7 +66,7 @@ func (r *explicitRepository) ListMessages(ctx context.Context, roomID int64, lim
 		FROM messages m
 		LEFT JOIN users u ON u.id = m.user_id
 		WHERE m.room_id = $1`
-	if r.mentions {
+	if mentions {
 		projection = strings.Replace(projection, "m.deleted_at", "m.deleted_at"+mentionProjection, 1)
 	}
 
@@ -71,12 +75,12 @@ func (r *explicitRepository) ListMessages(ctx context.Context, roomID int64, lim
 		err  error
 	)
 	if beforeID > 0 {
-		err = r.db.SelectContext(ctx, &msgs, projection+`
+		err = sqlx.SelectContext(ctx, queryer, &msgs, projection+`
 			AND m.id < $2
 			ORDER BY m.id DESC
 			LIMIT $3`, roomID, beforeID, limit)
 	} else {
-		err = r.db.SelectContext(ctx, &msgs, projection+`
+		err = sqlx.SelectContext(ctx, queryer, &msgs, projection+`
 			ORDER BY m.id DESC
 			LIMIT $2`, roomID, limit)
 	}

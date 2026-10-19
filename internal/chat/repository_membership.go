@@ -216,7 +216,7 @@ func (r *postgresRepository) TransferOwnership(ctx context.Context, roomID, curr
 	return nil
 }
 
-func (r *postgresRepository) CreateOrGetInvitation(ctx context.Context, roomID, inviterID, inviteeID int64) (*Invitation, bool, error) {
+func (r *postgresRepository) CreateOrGetInvitation(ctx context.Context, roomID, inviterID, inviteeID int64, authorize func(actor *RoomMember) error) (*Invitation, bool, error) {
 	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.repository.CreateOrGetInvitation")
 	defer span.End()
 	tx, err := r.db.BeginTxx(ctx, nil)
@@ -246,6 +246,19 @@ func (r *postgresRepository) CreateOrGetInvitation(ctx context.Context, roomID, 
 			return rollback(apperror.ErrNotFound)
 		}
 		return rollback(fmt.Errorf("chat repo CreateOrGetInvitation room: %w", err))
+	}
+
+	var actor RoomMember
+	actorErr := tx.GetContext(ctx, &actor, `SELECT room_id, user_id, role, joined_at FROM room_members WHERE room_id = $1 AND user_id = $2 FOR UPDATE`, roomID, inviterID)
+	if actorErr != nil && !errors.Is(actorErr, sql.ErrNoRows) {
+		return rollback(fmt.Errorf("chat repo CreateOrGetInvitation actor: %w", actorErr))
+	}
+	var currentActor *RoomMember
+	if actorErr == nil {
+		currentActor = &actor
+	}
+	if err := authorize(currentActor); err != nil {
+		return rollback(err)
 	}
 
 	var memberExists bool

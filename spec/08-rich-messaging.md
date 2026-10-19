@@ -19,8 +19,8 @@ the notification section is implemented locally with dedicated verification pend
 
 Deliver three slices: **08A search**, **08B attachments**, **08C mentions/inbox**.
 Phase 6 application code is now integrated from `develop`, including its
-revision/tombstone behavior. Phase 5 verification remains Pending
-although its review fixes are on main. Provider proofs can begin independently;
+revision/tombstone behavior. Phase 5 verification completed locally on 2026-10-17;
+its plan records the completed authorization/transaction checks. Provider proofs can begin independently;
 release requires the relevant integration and verification gates.
 
 Out of scope: global/semantic search, relevance pagination, attachment-only messages,

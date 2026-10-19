@@ -56,8 +56,8 @@ application delivery are out of scope.
 | 09C | Shared presence/typing, limits, authorization recovery | Phase 7 integrated; durable room control producers upgraded; two-node privacy/fault gates pass |
 | 09D | Measured rollout, load/fault evidence and recovery runbooks | 09A–09C gates pass; two-instance staging and provider ownership reviewed |
 
-Phase 5 remains Pending for verification; review fixes in current `main` do not
-complete that gate. Phase 6/7 app code and AsyncAPI assets are now integrated
+Phase 5 completed dedicated local verification on 2026-10-17; its plan records
+the authorization/transaction fixes and remaining staging boundaries. Phase 6/7 app code and AsyncAPI assets are now integrated
 from `develop`; distributed lifecycle producer verification remains a 09B gate.
 
 09A implementation and local verification are complete. Phase 8 outbox and 08C

@@ -20,7 +20,7 @@ Within the same priority, lower sequence numbers should normally be completed fi
 | 02 | P0 | [Data integrity and transactions](./02-data-integrity.md) | Valid schema and atomic multi-step mutations | 01 | Done |
 | 03 | P0 | [WebSocket authorization](./03-websocket-authorization.md) | Only authorized members can subscribe or publish | 01, 02 | Done |
 | 04 | P0 | [API and abuse protection](./04-api-hardening.md) | Safe validation, origin checks, limits, and consistent errors | 01, 03 | Done |
-| 05 | P1 | [Room membership and roles](./05-room-membership-roles.md) | Private rooms, invitations, ownership, and moderation roles | 02–04 | Pending |
+| 05 | P1 | [Room membership and roles](./05-room-membership-roles.md) | Private rooms, invitations, ownership, and moderation roles | 02–04 | Done |
 | 06 | P1 | [Message lifecycle](./06-message-lifecycle.md) | Edit, delete, and consistent real-time message events | 03–05 | Done |
 | 07 | P1 | [Presence, typing, and read state](./07-presence-read-state.md) | Online state, typing indicators, and unread/read tracking | 03, 05 | Done |
 | 08 | P2 | [Search, attachments, and notifications](./08-rich-messaging.md) | Discoverable messages and richer asynchronous engagement | 05–07 | In progress |
@@ -28,12 +28,12 @@ Within the same priority, lower sequence numbers should normally be completed fi
 
 ## Verification record
 
-Stages 01–04 are complete and tracked as `Done`. Phase 05 is Pending at the
-user's request. Phase 06 is Done using its existing membership/role contract,
-with authorization locked during new message mutations and isolated PostgreSQL
-and race verification complete. Phase 05 review fixes for public leave retries and atomic member-removal
-authorization are included from develop; dedicated PostgreSQL verification
-remains separate work.
+Stages 01–05 are complete locally. Phase 05 was resumed and completed on
+2026-10-17 with dedicated PostgreSQL clean/upgrade/constraint/rollback tests,
+authenticated HTTP and actual WebSocket verification, plus fixes for stale
+management authority and protected-read races. See its plan for evidence and
+remaining staging rollout boundaries. Phase 06 is Done with isolated PostgreSQL
+and race verification complete.
 
 Phase 07 is Done on a branch from main with the existing membership contract.
 The full race suite (including isolated PostgreSQL), vet, build and independent
@@ -43,7 +43,7 @@ Phase 06 schema migration remains before version 7 during deployment.
 
 Phase 08 is `In progress`: 08A search is implemented and verified locally on
 `ft/phase-8a`, including PostgreSQL migration/index and authorization tests.
-08B R2 foundation is implemented; scanner/provider gates remain pending. 08C mentions/inbox is Done locally after dedicated PostgreSQL/race verification and review fixes on 2026-10-05; staging and Phase 05 remain release gates.
+08B R2 foundation is implemented; scanner/provider gates remain pending. 08C mentions/inbox is Done locally after dedicated PostgreSQL/race verification and review fixes on 2026-10-05; staging remains a release gate; Phase 05 is now verified locally.
 Phase 09 is `Pending` under the user's Render Free decision on 2026-10-05.
 09A is `Done` locally; one-instance Free staging/reconnect/worker recovery checks
 remain follow-up work. Distributed 09B/09C and multi-instance 09D rollout are

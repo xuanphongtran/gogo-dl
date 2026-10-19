@@ -38,7 +38,7 @@ func (s *Service) ListMessagesForUser(ctx context.Context, userID, roomID int64,
 	if err := s.requireMember(ctx, roomID, userID); err != nil {
 		return nil, err
 	}
-	return s.repo.ListMessages(ctx, roomID, q.Limit, q.Before)
+	return s.repo.ListMessagesForMember(ctx, roomID, userID, q.Limit, q.Before, requireReadStateMember)
 }
 
 // JoinPublicRoom adds a user to a public room. The operation is idempotent.
@@ -66,10 +66,13 @@ func (s *Service) JoinPublicRoom(ctx context.Context, roomID, userID int64) erro
 func (s *Service) ListMembers(ctx context.Context, actorID, roomID int64) ([]*RoomMember, error) {
 	ctx, span := otel.Tracer("gogo-dl/chat").Start(ctx, "chat.service.ListMembers")
 	defer span.End()
+	if _, err := s.repo.GetRoomForUser(ctx, roomID, actorID); err != nil {
+		return nil, err
+	}
 	if err := s.requireMember(ctx, roomID, actorID); err != nil {
 		return nil, err
 	}
-	return s.repo.ListMembers(ctx, roomID)
+	return s.repo.ListMembersForUser(ctx, roomID, actorID, requireReadStateMember)
 }
 
 // LeaveRoom removes the caller's membership. Owners must transfer ownership
@@ -120,7 +123,7 @@ func (s *Service) Invite(ctx context.Context, actorID, roomID, inviteeID int64) 
 	if err := s.requireManager(ctx, roomID, actorID); err != nil {
 		return nil, false, err
 	}
-	invitation, created, err := s.repo.CreateOrGetInvitation(ctx, roomID, actorID, inviteeID)
+	invitation, created, err := s.repo.CreateOrGetInvitation(ctx, roomID, actorID, inviteeID, authorizeInviteManager)
 	if err != nil {
 		return nil, false, err
 	}
@@ -242,13 +245,24 @@ func (s *Service) ChangeMemberRole(ctx context.Context, actorID, roomID, targetI
 	if target.Role == RoomRoleOwner || (role != RoomRoleMember && role != RoomRoleModerator) {
 		return apperror.ErrInvalidRequest
 	}
-	if target.Role == role {
+	changed, err := s.repo.SetMemberRoleWithAuthorization(ctx, roomID, actorID, targetID, role, func(actor, target *RoomMember) error {
+		if actor == nil || actor.Role != RoomRoleOwner {
+			return apperror.ErrForbidden
+		}
+		if target == nil {
+			return apperror.ErrNotFound
+		}
+		if target.Role == RoomRoleOwner || (role != RoomRoleMember && role != RoomRoleModerator) {
+			return apperror.ErrInvalidRequest
+		}
 		return nil
-	}
-	if err := s.repo.SetMemberRole(ctx, roomID, targetID, role); err != nil {
+	})
+	if err != nil {
 		return err
 	}
-	s.broadcastMembership(roomID, "role_changed", targetID, role, actorID)
+	if changed {
+		s.broadcastMembership(roomID, "role_changed", targetID, role, actorID)
+	}
 	return nil
 }
 
@@ -305,7 +319,11 @@ func (s *Service) requireManager(ctx context.Context, roomID, userID int64) erro
 		}
 		return err
 	}
-	if member.Role != RoomRoleOwner && member.Role != RoomRoleModerator {
+	return authorizeInviteManager(member)
+}
+
+func authorizeInviteManager(actor *RoomMember) error {
+	if actor == nil || (actor.Role != RoomRoleOwner && actor.Role != RoomRoleModerator) {
 		return apperror.ErrForbidden
 	}
 	return nil
