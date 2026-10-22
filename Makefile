@@ -27,14 +27,14 @@ run:
 	@if command -v air > /dev/null; then \
 		air; \
 	else \
-		go run $(CMD_PATH)/main.go; \
+		go run $(CMD_PATH); \
 	fi
 
 ## build: Compile a production binary to ./bin/
 build:
 	@echo "→ Building $(APP_NAME)..."
 	@mkdir -p $(BUILD_DIR)
-	CGO_ENABLED=0 go build -ldflags="-s -w" -o $(BINARY) $(CMD_PATH)/main.go
+	CGO_ENABLED=0 go build -ldflags="-s -w" -o $(BINARY) $(CMD_PATH)
 	@echo "✓ Binary at $(BINARY)"
 
 ## clean: Remove build artefacts

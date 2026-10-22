@@ -5,6 +5,17 @@ database. The application applies embedded SQL migrations before opening its
 HTTP listener. It needs no separate migration command or migration files at
 runtime.
 
+Fatal startup logs keep raw causes private and add safe `failure_stage` and
+`failure_reason` fields. `database/connection_failed` means connectivity failed;
+check the direct endpoint, credentials, network access and TLS settings in your
+environment. `migrations/dirty_schema` means startup detected an incomplete
+migration: inspect the recorded schema version and use the
+[manual recovery runbook](render-free-operations.md#recovery-decision-and-evidence-record).
+Do not clear the dirty flag or run down migrations to force readiness.
+`http_listener` or `metrics_listener` identifies a failed listener; check its
+bind address/port. `deadline_exceeded` identifies a cancelled deadline rather
+than disclosing provider/config error text.
+
 ## Render Free deployment scope
 
 The current deployment choice is Render Free with one instance. Free web services

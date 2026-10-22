@@ -112,6 +112,13 @@ crash recovery, R2/database consistency or hosted recovery. Keep cleanup/upload
 admission disabled when rehearsing a database restore without its matching
 object snapshot, as described in the operational runbook.
 
+Both Docker targets also create an empty `startup_failure_test` fixture and run
+`TestStartupFailureDoesNotServe`. It seeds a dirty migration state only in that
+empty DB and separately tests an unavailable DB endpoint. The binary must exit
+nonzero without HTTP startup or a migration-success log, preserve dirty state,
+and emit the expected safe failure stage/reason without credentials. No dirty
+flag in an existing DB is modified or automatically cleared.
+
 ## PostgreSQL crash recovery
 
 ```bash
