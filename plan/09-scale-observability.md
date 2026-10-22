@@ -97,6 +97,34 @@ fixture does not establish production RPO/RTO, PostgreSQL crash recovery, Neon P
 attachment/object consistency or hosted rollout. The staging/distributed checklists
 remain separate. Instructions: [local recovery](../docs/local-recovery.md#isolated-backuprestore-rehearsal).
 
+### Local PostgreSQL crash follow-up — 2026-10-22
+
+After committing local recovery/backup as `d23d83b`, add the explicit
+`make verify-local-crash-recovery` target (`--crash` on the same fixture script).
+It never targets the existing FE DB. PostgreSQL runs in the invocation's own
+new container/volume with no network or public ports.
+
+An acknowledged `UPDATE ... RETURNING` and transaction marker precede an actual
+SIGKILL of that container. The open psql connection must fail; restart reuses the
+same volume. Whole-table and sequence fingerprints must match the pre-crash
+snapshot before restored application checks. This proves committed fixture
+state retention and rollback of the interrupted uncommitted change, followed by
+authenticated history/inbox/retry and removed-member REST/WS denial.
+
+No runtime API/configuration/dependency/migration changes. The default backup
+target retains graceful operation; crash injection requires its separate target.
+The fixture and archive remain in a stopped container/volume. This local process
+failure is not host/power/disk recovery, hosted failover or a production RPO/RTO.
+
+Observed verification: `make verify-local-crash-recovery` passed with the final
+row/transaction barriers, race-enabled Go1.23 binaries and PostgreSQL16. Source
+recovery took12.75s; post-crash restored checks took7.04s, including bcrypt and
+race-runtime overhead. `bash -n scripts/verify-local-backup.sh` and
+`git diff --check` passed; independent review found no important issue. The
+fixture was stopped with its volume/archive retained; FE `/readyz` stayed200.
+Only shell/Makefile/docs changed after `d23d83b`, so the already-passed full Go
+race/vet/build suite was not repeated; the actual process/restore suites did run.
+
 ### Deployment decision — 2026-10-05 (historical scope)
 
 The user keeps Render Free. The active deployment is one Go Web Service instance

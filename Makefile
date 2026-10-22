@@ -14,7 +14,7 @@ MIGRATE_URL ?= $(shell grep DB_ $(ENV_FILE) 2>/dev/null | \
 MIGRATIONS_DIR := migrations
 
 # ── Phony targets ──────────────────────────────────────────────────────────────
-.PHONY: all run build clean test lint docs docs-asyncapi smoke verify-local-backup \
+.PHONY: all run build clean test lint docs docs-asyncapi smoke verify-local-backup verify-local-crash-recovery \
         migrate-up migrate-down migrate-create \
         deps tidy docker-up docker-down
 
@@ -62,6 +62,10 @@ smoke:
 ## verify-local-backup: Rehearse isolated PostgreSQL backup/restore using Docker
 verify-local-backup:
 	bash scripts/verify-local-backup.sh
+
+## verify-local-crash-recovery: Rehearse crash/rollback on a new isolated PostgreSQL fixture
+verify-local-crash-recovery:
+	bash scripts/verify-local-backup.sh --crash
 
 ## lint: Run golangci-lint (install: https://golangci-lint.run/usage/install/)
 lint:

@@ -403,6 +403,8 @@ For an isolated actual-process restart and PostgreSQL backup/restore rehearsal,
 run `make verify-local-backup` with Docker. It creates and retains its own test
 DB/volume, without changing the FE database. See the
 [local recovery guide](docs/local-recovery.md) for scope, assertions and limits.
+Use `make verify-local-crash-recovery` to additionally interrupt an uncommitted
+transaction with a PostgreSQL process crash on that invocation's own fixture.
 
 Unit and WebSocket tests run without external services. PostgreSQL integration tests are enabled only when TEST_DATABASE_URL points to an isolated disposable database; they never load configs/.env.
 

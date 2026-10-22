@@ -90,7 +90,7 @@ or distributed deployment gates. No new runtime service is needed for this slice
 | 08A / 08C | Implemented and verified locally | Hosted/browser acceptance when staging is available |
 | 08B | Binding/download/lifecycle and lightweight processing implemented | Hosted acceptance; R2/scanner re-checks excluded by user request; ClamAV deferred |
 | 09A / Free operation | Observability, real-process restart and DB-path recovery verified | Hosted redeploy/cold-start/termination evidence; sustained capacity |
-| 09 local DB recovery | Backup/restore tooling implemented with isolated data/sequence comparison and restored HTTP/WS checks | Production backup ownership, retention/PITR and DB/object reconciliation remain separate |
+| 09 local DB recovery | Backup/restore and explicit process-crash tooling with data/sequence comparison, uncommitted rollback and restored HTTP/WS checks | Production backup ownership, retention/PITR and DB/object reconciliation remain separate |
 | 09B–09D | Deferred | Explicit distributed scaling/provider decision before implementation |
 | [Deployment migrations](10-serverless-migrations.md) | Embedded startup migrations implemented; isolated clean/upgrade/restart/failure checks exist | Current hosted schema-specific rollout evidence |
 

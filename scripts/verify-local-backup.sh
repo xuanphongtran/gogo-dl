@@ -2,6 +2,14 @@
 # Owns only newly named Docker fixtures. Keeps the stopped DB and its volume.
 set -euo pipefail
 
+crash_recovery=false
+if [[ $# == 1 && $1 == --crash ]]; then
+  crash_recovery=true
+elif [[ $# != 0 ]]; then
+  printf 'Usage: bash scripts/verify-local-backup.sh [--crash]\n' >&2
+  exit 2
+fi
+
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 fixture="gogo-backup-$(date +%s)-$$"
 database_container="${fixture}-pg"
@@ -10,10 +18,15 @@ module_cache=${RECOVERY_MODULE_CACHE:-gogo-dl-scan-gomod}
 build_cache=${RECOVERY_BUILD_CACHE:-gogo-dl-scan-gocache}
 artifacts=$(mktemp -d /tmp/gogo-backup.XXXXXX)
 database_started=false
+transaction_pid=
 cleanup() {
   if [[ $database_started == true ]]; then
     docker stop "$database_container" >/dev/null
     printf 'Retained stopped fixture: %s; volume: %s\n' "$database_container" "$data_volume"
+  fi
+  if [[ -n $transaction_pid ]]; then
+    # A failed barrier still owns a psql process; DB shutdown releases it.
+    wait "$transaction_pid" >/dev/null 2>&1 || true
   fi
   printf 'Verification fingerprints: %s\n' "$artifacts"
 }
@@ -28,11 +41,14 @@ docker run -d --name "$database_container" --network none \
   -e POSTGRES_PASSWORD=local-recovery-fixture-only -e POSTGRES_DB=source_test \
   -v "$data_volume:/var/lib/postgresql/data" postgres:16-alpine >/dev/null
 database_started=true
-for attempt in {1..30}; do
-  if docker exec "$database_container" pg_isready -h 127.0.0.1 -p 5432 -U postgres -d source_test >/dev/null 2>&1; then break; fi
-  if [[ $attempt == 30 ]]; then printf 'PostgreSQL fixture did not become ready\n' >&2; exit 1; fi
-  sleep 1
-done
+await_database() {
+  for attempt in {1..30}; do
+    if docker exec "$database_container" pg_isready -h 127.0.0.1 -p 5432 -U postgres -d source_test >/dev/null 2>&1; then return; fi
+    if [[ $attempt == 30 ]]; then printf 'PostgreSQL fixture did not become ready\n' >&2; return 1; fi
+    sleep 1
+  done
+}
+await_database
 
 run_go() {
   docker run --rm --network "container:$database_container" \
@@ -76,6 +92,39 @@ for database in source_test restored_test; do
 done
 diff -u "$artifacts/source_test.fingerprint" "$artifacts/restored_test.fingerprint"
 printf 'PASS all table data and sequence fingerprints match\n'
+if [[ $crash_recovery == true ]]; then
+  # Keep an actual transaction open with a pipe, not a timing-dependent sleep.
+  # psql's SELECT acknowledges that UPDATE has finished but COMMIT was not sent.
+  coproc CRASH_TX {
+    docker exec -i "$database_container" psql -XqAt -v ON_ERROR_STOP=1 -U postgres -d restored_test \
+      2>"$artifacts/crash-transaction.stderr"
+  }
+  transaction_pid=$CRASH_TX_PID
+  transaction_input=${CRASH_TX[1]}
+  transaction_output=${CRASH_TX[0]}
+  printf "BEGIN;\nUPDATE messages SET content='uncommitted crash fixture' WHERE id=1 RETURNING 'row-updated';\nSELECT 'transaction-open';\n" >&"$transaction_input"
+  read -r -t 10 row_marker <&"$transaction_output"
+  read -r -t 10 transaction_marker <&"$transaction_output"
+  if [[ $row_marker != row-updated || $transaction_marker != transaction-open ]]; then
+    printf 'Uncommitted fixture transaction did not reach its barrier\n' >&2
+    exit 1
+  fi
+  # Only this script's newly created, network-isolated container is targeted.
+  docker kill --signal=KILL "$database_container" >/dev/null
+  if wait "$transaction_pid"; then
+    printf 'Expected interrupted transaction connection to fail\n' >&2
+    exit 1
+  fi
+  transaction_pid=
+  exec {transaction_input}>&-
+  exec {transaction_output}<&-
+  docker start "$database_container" >/dev/null
+  await_database
+  docker exec -i "$database_container" psql -XAt -v ON_ERROR_STOP=1 -U postgres -d restored_test \
+    <"$artifacts/fingerprint.sql" >"$artifacts/after-crash.fingerprint"
+  diff -u "$artifacts/source_test.fingerprint" "$artifacts/after-crash.fingerprint"
+  printf 'PASS committed tables/sequences retained and uncommitted UPDATE rolled back after PostgreSQL crash\n'
+fi
 run_go go test -buildvcs=false -tags=integration -race -v -count=1 -timeout=90s \
   -run '^TestRestoredServer$' ./integration/recovery
 printf 'PASS isolated PostgreSQL backup/restore rehearsal (not production RPO/RTO)\n'

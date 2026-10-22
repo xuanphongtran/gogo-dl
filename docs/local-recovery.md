@@ -111,3 +111,25 @@ It does not establish Neon PITR/backup retention, production RPO/RTO, PostgreSQL
 crash recovery, R2/database consistency or hosted recovery. Keep cleanup/upload
 admission disabled when rehearsing a database restore without its matching
 object snapshot, as described in the operational runbook.
+
+## PostgreSQL crash recovery
+
+```bash
+make verify-local-crash-recovery
+```
+
+This explicit mode runs the backup/restore rehearsal, then starts a transaction
+on the restored fixture. `UPDATE ... RETURNING` acknowledges a changed message
+row; a second marker confirms the session remains inside the transaction without
+COMMIT. A psql pipe holds the session open, without timing-dependent sleeps.
+
+The script sends SIGKILL only to the unique PostgreSQL container created by that
+invocation, then starts it again with the same retained volume. After TCP
+readiness, every table/sequence fingerprint must match the source snapshot:
+committed state survived and the uncommitted message change disappeared. The
+actual server then repeats restored login/history/inbox/retry and membership
+checks. The interrupted psql process is joined, including on failure cleanup.
+
+The ordinary `verify-local-backup` target does not inject a crash. This local
+process-crash rehearsal does not test host/power loss, disk corruption, a crash
+during backup, Neon failover/PITR, object reconciliation or production RPO/RTO.
