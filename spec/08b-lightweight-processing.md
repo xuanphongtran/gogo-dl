@@ -1,6 +1,6 @@
 # 08B extension: lightweight attachment processing
 
-User-approved scope: replace the default heavy ClamAV deployment with strict
+**Status:** implemented. The supported default uses strict
 JPEG/PNG/TXT validation and image rewriting, keeping a reversible service boundary.
 No PDF/Office/archives/SVG/HTML or new dependencies. Upload admission extension
 below supersedes the initial default-closed runtime restriction.
@@ -50,7 +50,11 @@ filename extension/type at admission. Existing ownership, quota, idempotency and
 cleanup deadlines apply unchanged. No automatic cloud provisioning or live config
 changes; backend operators enable the flag after deploying scanner v2/migration12.
 
-Download/message binding remain outside this request. Missing browser bucket CORS,
+Message binding/download are implemented by [schema13](08b-message-attachments.md). Missing browser bucket CORS,
 provider egress and cold starts are operational checks, not startup code bans.
 The backend never marks files ready before processing. Scanner outages can leave
 uploads scanning/retrying; monitor dead-letter scan/cleanup jobs and retained quota.
+
+Transport authentication, response bounds, retries, immutable promotion and lease
+fencing are defined in the [processing boundary](08b-scanner-integration.md).
+Current open work is tracked in [pending](../plan/pending.md).

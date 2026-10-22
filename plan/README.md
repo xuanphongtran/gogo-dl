@@ -1,124 +1,37 @@
-# Product and Engineering Roadmap
+# Roadmap
 
-This directory breaks the next implementation work into ordered, reviewable feature plans for the real-time chat domain.
+Status as of 2026-10-22. This page tracks implementation; it does not declare a
+published release or a hosted rollout successful.
 
-Detailed implementation specifications for plans 01–09 are in [`spec/`](../spec/), with the combined P0 execution sequence in [`00-p0-foundation-execution.md`](./00-p0-foundation-execution.md).
+| Phase | Scope | Implementation |
+| --- | --- | --- |
+| 01 | Test foundation | Complete locally |
+| 02 | Data integrity and transactions | Complete locally |
+| 03 | WebSocket authorization | Complete locally |
+| 04 | API/origin/resource limits | Complete locally |
+| 05 | Membership, roles and invitations | Complete locally |
+| 06 | Message edit/delete and revision events | Complete locally |
+| 07 | Presence, typing and personal read state | Complete locally |
+| [08](08-rich-messaging.md) | Search, attachments and mentions/inbox | Implemented; local verification recorded |
+| [09A](09-scale-observability.md) | Single-instance observability and recovery | Implemented; local verification recorded |
+| 09B / 09C / 09D | Broker, cross-node state and distributed rollout | Not implemented; deferred |
+| [Deployment migrations](10-serverless-migrations.md) | Embedded migrations and safe startup failure | Implemented; local verification recorded |
 
-## Priority model
+Frontend completion is user-confirmed. R2/lightweight processing is implemented;
+no further provider/scanner verification is scheduled in this documentation task.
+ClamAV is deferred indefinitely and is not a release prerequisite.
 
-- **P0 — MVP safety:** correctness, authorization, data integrity, and regression protection. Complete before adding user-facing breadth.
-- **P1 — Core product:** capabilities expected from a useful multi-room chat product.
-- **P2 — Growth:** richer experiences, horizontal scaling, and production operations.
+## Next work
 
-Within the same priority, lower sequence numbers should normally be completed first. A plan may move only when product requirements change or evidence invalidates an assumption; record the reason in this file.
+All open work is tracked in [pending.md](pending.md), with release/deployment
+gates separate from future functionality. In particular, the current release
+scope has one instance and requires no broker. Future distributed contracts are
+retained in [spec/09](../spec/09-scale-observability.md), not promised at runtime.
 
-## Ordered roadmap
+- [Release scope and procedure](../docs/release.md)
+- [Verification record](../docs/verification.md)
+- [Contract index](../spec/README.md)
 
-| Order | Priority | Plan | Outcome | Depends on | Status |
-|---:|:---:|---|---|---|:---:|
-| 01 | P0 | [Test foundation](./01-test-foundation.md) | Reliable unit, HTTP, race, and database verification | — | Done |
-| 02 | P0 | [Data integrity and transactions](./02-data-integrity.md) | Valid schema and atomic multi-step mutations | 01 | Done |
-| 03 | P0 | [WebSocket authorization](./03-websocket-authorization.md) | Only authorized members can subscribe or publish | 01, 02 | Done |
-| 04 | P0 | [API and abuse protection](./04-api-hardening.md) | Safe validation, origin checks, limits, and consistent errors | 01, 03 | Done |
-| 05 | P1 | [Room membership and roles](./05-room-membership-roles.md) | Private rooms, invitations, ownership, and moderation roles | 02–04 | Done |
-| 06 | P1 | [Message lifecycle](./06-message-lifecycle.md) | Edit, delete, and consistent real-time message events | 03–05 | Done |
-| 07 | P1 | [Presence, typing, and read state](./07-presence-read-state.md) | Online state, typing indicators, and unread/read tracking | 03, 05 | Done |
-| 08 | P2 | [Search, attachments, and notifications](./08-rich-messaging.md) | Discoverable messages and richer asynchronous engagement | 05–07 | In progress |
-| 09 | P2 | [Scale and observability](./09-scale-observability.md) | Single-instance observability complete; distributed scale deferred for Render Free | 01–08 | Pending |
-
-## Verification record
-
-Stages 01–05 are complete locally. Phase 05 was resumed and completed on
-2026-10-17 with dedicated PostgreSQL clean/upgrade/constraint/rollback tests,
-authenticated HTTP and actual WebSocket verification, plus fixes for stale
-management authority and protected-read races. See its plan for evidence and
-remaining staging rollout boundaries. Phase 06 is Done with isolated PostgreSQL
-and race verification complete.
-
-Phase 07 is Done on a branch from main with the existing membership contract.
-The full race suite (including isolated PostgreSQL), vet, build and independent
-review/fixes are complete. Phase 06 application code is now included from develop,
-with both lifecycle and read-state repository contracts retained. The exact
-Phase 06 schema migration remains before version 7 during deployment.
-
-Phase 08 is `In progress`: 08A search is implemented and verified locally on
-`ft/phase-8a`, including PostgreSQL migration/index and authorization tests.
-08B message binding/download and the lightweight processor are implemented;
-hosted file acceptance remains a separate release gate. R2/scanner verification
-is excluded from the current work at the user's request on 2026-10-20; ClamAV
-remains deferred indefinitely. 08C mentions/inbox is Done locally after dedicated
-PostgreSQL/race verification and review fixes on 2026-10-05; staging remains a
-release gate; Phase 05 is now verified locally.
-Phase 09 is `Pending` under the user's Render Free decision on 2026-10-05.
-09A is `Done` locally. An opt-in actual-process recovery suite now verifies local
-SIGTERM/WS reconnect, durable history/inbox/retry recovery, membership revocation
-across restart and DB-path outage/readiness recovery. Hosted Free recovery checks
-remain follow-up work while Render quota is exhausted. Distributed 09B/09C and multi-instance 09D rollout are
-deferred. No paid broker or multi-instance service is required for current use.
-The preserved distributed checklists apply when scaling is explicitly resumed.
-See its plan for the Free deployment scope and exact future gates.
-
-## Phase 08–09 execution boundaries
-
-09B–09D below describe future distributed work, deferred while using Render Free.
-The active Phase 09 follow-up is single-instance staging verification in its plan.
-
-| Slice | Can begin with | Release gate |
-|---|---|---|
-| 08A — Room search | Existing membership and the integrated Phase 06 lifecycle contract | Authorized, deletion-aware search and measured query plans |
-| 08B — Attachments | 08A schema sequence and verified object-store/scanner capabilities | Private immutable scanned objects, quotas, cleanup and retry tests |
-| 08C — Mentions and notifications | Message lifecycle, Phase 07 read state and shared outbox schema | Atomic intents, private durable feed and idempotent workers |
-| 09A — Observability and lifecycle | Existing HTTP/DB/Hub paths; can proceed before Phase 08 | Tested probes, bounded labels, drain behavior and baseline measurements |
-| 09B — Distributed durable delivery | Shared Phase 08 outbox and integrated durable event producers | Per-instance fan-out, recovery, sequencing and revocation tests |
-| 09C — Shared ephemeral state and limits | 09B and verified shared-store capabilities | Multi-node presence/typing, admission and rate-limit invariants |
-| 09D — Rollout | All Phase 09 slices verified in staging | Two-instance load/failure evidence, dashboards and rollback runbook |
-
-The individual plans define the exact slice scope and acceptance criteria.
-Migration versions are assigned against the merged history during implementation;
-new branches must include every prerequisite version. Planning does not reserve
-credentials, provision services or change the application's current runtime.
-
-Current local verification instructions: [single-instance recovery](../docs/local-recovery.md).
-Local evidence does not complete hosted rollout, browser acceptance, production backup/restore
-or distributed deployment gates. No new runtime service is needed for this slice.
-
-### Active work and remaining gates — 2026-10-22
-
-| Area | Local implementation / verification | Remaining work |
-|---|---|---|
-| 01–07 | Done | Environment-specific rollout acceptance |
-| 08A / 08C | Implemented and verified locally | Hosted/browser acceptance when staging is available |
-| 08B | Binding/download/lifecycle and lightweight processing implemented | Hosted acceptance; R2/scanner re-checks excluded by user request; ClamAV deferred |
-| 09A / Free operation | Observability, real-process restart and DB-path recovery verified | Hosted redeploy/cold-start/termination evidence; sustained capacity |
-| 09 local DB recovery | Backup/restore and explicit process-crash tooling with data/sequence comparison, uncommitted rollback and restored HTTP/WS checks | Production backup ownership, retention/PITR and DB/object reconciliation remain separate |
-| 09B–09D | Deferred | Explicit distributed scaling/provider decision before implementation |
-| [Deployment migrations](10-serverless-migrations.md) | Embedded migrations plus actual-process DB/dirty-schema startup rejection and secret-safe diagnostics verified | Current hosted schema-specific rollout evidence |
-
-Continue local operation with `make verify-local-backup`; it creates only its own
-fixtures and preserves stopped data volumes. It does not provision a hosted service.
-
-## Status values
-
-- `Proposed`: scoped but not started.
-- `Ready`: dependencies and open decisions are resolved.
-- `In progress`: implementation is active.
-- `Pending`: work is deferred at the user's request; unresolved work is recorded in the plan.
-- `Blocked`: a named external decision or dependency prevents progress.
-- `Done`: acceptance criteria are verified and documentation is current.
-
-## How to execute a plan
-
-1. Confirm dependencies and open decisions.
-2. Convert acceptance criteria into tests or verifiable checks.
-3. Use the Plan Checklist in [`AGENTS.md`](../AGENTS.md).
-4. Keep each pull request independently deployable; split a plan into vertical slices when needed.
-5. Update the status and record material scope decisions before handoff.
-
-## Global constraints
-
-- PostgreSQL remains the durable source of truth.
-- All protected actions require server-side authorization.
-- Persisted message mutations occur before best-effort real-time delivery.
-- Public API and event changes are versioned or backward compatible.
-- Every concurrency change runs under the race detector.
-- Destructive migration or rollout steps require an explicit recovery plan.
+Completed execution checklists and superseded scanner proposals were removed to
+avoid conflicting status reports. Their history remains in Git. Current specs,
+API contracts and operational runbooks remain maintained.

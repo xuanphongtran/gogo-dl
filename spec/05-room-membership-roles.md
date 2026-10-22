@@ -1,6 +1,6 @@
 # 05 — Room Membership and Roles Specification
 
-**Related plan:** [plan/05-room-membership-roles.md](../plan/05-room-membership-roles.md)
+**Roadmap:** [implementation status](../plan/README.md)
 **Status:** Done locally — implementation, dedicated PostgreSQL/HTTP/WS/race verification complete
 **Priority:** P1
 **Depends on:** 02, 03, 04
@@ -465,8 +465,8 @@ Use `httptest` to cover:
 
 ## Completion evidence — 2026-10-17
 
-See the [Phase 05 completion record](../plan/05-room-membership-roles.md#completion-record--2026-10-17)
-for named PostgreSQL migration, rollback, authorization, HTTP and real-WebSocket
-checks. Existing 08C tests additionally cover rejoin generation/inbox isolation.
-This completion is local; provider staging, browser acceptance, capacity and
-Render redeploy recovery remain in the Phase 08/09 rollout gates.
+Dedicated PostgreSQL migration/transaction/authorization, HTTP and actual-WS
+checks completed locally. Existing 08C tests also cover generation/inbox isolation.
+See the [verification summary](../docs/verification.md); candidate-specific and
+hosted operational evidence is tracked in [pending](../plan/pending.md).
+Frontend completion is user-confirmed.

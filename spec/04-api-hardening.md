@@ -1,7 +1,7 @@
 # 04 — API and Abuse Protection Specification
 
-**Related plan:** [plan/04-api-hardening.md](../plan/04-api-hardening.md)
-**Execution plan:** [plan/04-api-hardening-execution.md](../plan/04-api-hardening-execution.md)
+**Roadmap:** [implementation status](../plan/README.md)
+**Verification:** [recorded checks](../docs/verification.md)
 **Status:** Done
 **Priority:** P0
 **Depends on:** 01, 02, 03
@@ -12,17 +12,6 @@ Make HTTP and WebSocket trust boundaries safe for internet-facing deployment
 without changing successful REST paths or the existing join/leave WebSocket
 protocol. The phase must bound resource consumption, reject unsafe origins and
 malformed input, and make abuse visible without logging credentials.
-
-## Current gaps
-
-- `websocket.Upgrader.CheckOrigin` currently accepts every origin.
-- WebSocket read size is a code constant rather than an application setting.
-- HTTP body/header limits, connection admission, and request rate limits are
-  not enforced at the application boundary.
-- Gin binding validates shape, but domain services do not consistently
-  normalize or validate semantic content.
-- Request logs redact the WebSocket query token, but there is no correlation
-  ID contract or explicit sensitive-field logging policy.
 
 ## Trust boundaries
 

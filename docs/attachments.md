@@ -1,7 +1,7 @@
 # Message attachments: frontend contract
 
-Implemented on `ft/phase-8b-message-attachments`, schema13. The hosted service
-supports this contract only after deploying this branch. Lightweight processing
+Implemented in schema13. A service supports this contract only after deploying
+a compatible backend through schema13. Lightweight processing
 is supported; ClamAV is deferred indefinitely and is not required.
 
 All API calls below use `/api/v1` and `Authorization: Bearer <access_token>`.
@@ -10,7 +10,7 @@ The caller must remain a member of the room. Files stay in private R2 storage.
 ## Upload and send
 
 1. POST `/rooms/{room_id}/attachments/uploads` with `Idempotency-Key` and
-   `{filename, content_type, size_bytes, sha256}`. Allowed: JPEG/PNG/TXT, 1–10 MiB.
+   `{filename, content_type, size_bytes, sha256}`. Allowed: JPEG/PNG/TXT, 1 byte–10 MiB.
    Use the original bytes for size and SHA-256. The key is 16–128 printable ASCII
    characters and should identify this upload attempt.
 2. PUT raw bytes directly to the returned `upload_url`, using the returned headers.
@@ -43,7 +43,8 @@ array, with processed output metadata:
 ```
 
 No bucket, object key or signed URL appears there. Image re-encoding may change
-size/hash. Attachment GET describes original input before binding and processed
+size/hash. EXIF orientation/color metadata is not preserved, so presentation may
+change. Attachment GET describes original input before binding and processed
 output after binding. Do not assume the original hash still identifies output.
 Search indexes caption text, not file content. Editing changes only the caption;
 it may be blank if attachments remain. File-only messages with no caption will
@@ -102,3 +103,7 @@ Never make the bucket public.
 
 Swagger: `/swagger/index.html`; AsyncAPI: `/asyncapi/` when documentation is enabled.
 These URLs reflect only the deployed version, not uncommitted local changes.
+
+Current release scope and open operation work are tracked in
+[release preparation](release.md) and [pending](../plan/pending.md). Frontend
+completion is user-confirmed; this is the current contract, not a new test report.

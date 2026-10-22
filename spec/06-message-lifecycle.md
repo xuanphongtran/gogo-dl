@@ -1,14 +1,15 @@
 # 06 — Message Lifecycle Specification
 
-**Related plan:** [plan/06-message-lifecycle.md](../plan/06-message-lifecycle.md)
-**Status:** Implemented and verified; Phase 05 remains Pending
+**Roadmap:** [implementation status](../plan/README.md)
+**Status:** implemented and verified locally; Phase05 membership is also complete locally.
 **Priority:** P1
 **Depends on:** 03 and the existing membership/role contract of 05
 
 ## Objective and decisions
 
 Add authenticated editing and deletion without changing message IDs, room IDs,
-creation times, or ID-based history pagination. Phase 05 remains Pending.
+creation times, or ID-based history pagination. Phase05 completed local verification
+on2026-10-17.
 The user selected these policies:
 
 - Soft deletion retains a tombstone and erases content from the message row.
@@ -46,7 +47,8 @@ Both routes are under the existing authenticated, body-limited and rate-limited
 { "content": "Updated text", "revision": 1 }
 ```
 
-Content uses the existing send-message normalization and 4000-byte limit.
+Content uses send-message normalization and the4000-byte limit; it may be blank
+while attachments remain, as defined by the schema13 attachment extension.
 `revision` is required and must be positive. A successful edit returns `200`
 with the complete Message and increments revision once. Creation time remains
 unchanged; `edited_at` is assigned by PostgreSQL after locking the current row.
@@ -149,4 +151,4 @@ join/leave-only protocol. Hub map ownership and reader/writer pumps stay intact.
   role changes competing with an authorization check.
 - Regenerate Swagger; document the HTTP and WebSocket contracts in README.
 - Run gofmt, focused tests, full race suite, vet, build and diff checks. Phase 05
-  verification remains a separate, deferred work item.
+  verification completed locally; release/deployment gates are tracked separately.

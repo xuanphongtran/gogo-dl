@@ -1,6 +1,6 @@
 # 07 — Presence, Typing, and Read State Specification
 
-**Related plan:** [plan/07-presence-read-state.md](../plan/07-presence-read-state.md)
+**Roadmap:** [implementation status](../plan/README.md)
 **Status:** Implemented and verified
 **Depends on:** 03 and the existing membership contract of 05
 
@@ -8,7 +8,7 @@
 
 Members can see room presence and typing, and maintain a durable personal read
 cursor. Phase 06 application code and Phase 05 membership review fixes are
-included from develop. Dedicated Phase 05 verification remains Pending.
+included from develop. Dedicated Phase05 verification completed locally2026-10-17.
 Defaults below are implementation assumptions because the roadmap leaves them
 open. No new dependencies or environment settings are needed.
 
@@ -149,4 +149,4 @@ covered service authorization, transaction locks, Hub state ownership and stale
 authorization. Review fixes revoke existing subscriptions on denied repeat joins,
 avoid database work for already-stopped typing retries, and make revocation tests
 independent of map iteration order. The final revocation regression passed 50
-race-enabled runs. Detailed commands and limitations are recorded in the plan.
+race-enabled runs. Current commands and limitations are in the verification record.
