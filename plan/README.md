@@ -43,10 +43,17 @@ Phase 06 schema migration remains before version 7 during deployment.
 
 Phase 08 is `In progress`: 08A search is implemented and verified locally on
 `ft/phase-8a`, including PostgreSQL migration/index and authorization tests.
-08B R2 foundation is implemented; scanner/provider gates remain pending. 08C mentions/inbox is Done locally after dedicated PostgreSQL/race verification and review fixes on 2026-10-05; staging remains a release gate; Phase 05 is now verified locally.
+08B message binding/download and the lightweight processor are implemented;
+hosted file acceptance remains a separate release gate. R2/scanner verification
+is excluded from the current work at the user's request on 2026-10-20; ClamAV
+remains deferred indefinitely. 08C mentions/inbox is Done locally after dedicated
+PostgreSQL/race verification and review fixes on 2026-10-05; staging remains a
+release gate; Phase 05 is now verified locally.
 Phase 09 is `Pending` under the user's Render Free decision on 2026-10-05.
-09A is `Done` locally; one-instance Free staging/reconnect/worker recovery checks
-remain follow-up work. Distributed 09B/09C and multi-instance 09D rollout are
+09A is `Done` locally. An opt-in actual-process recovery suite now verifies local
+SIGTERM/WS reconnect, durable history/inbox/retry recovery, membership revocation
+across restart and DB-path outage/readiness recovery. Hosted Free recovery checks
+remain follow-up work while Render quota is exhausted. Distributed 09B/09C and multi-instance 09D rollout are
 deferred. No paid broker or multi-instance service is required for current use.
 The preserved distributed checklists apply when scaling is explicitly resumed.
 See its plan for the Free deployment scope and exact future gates.
@@ -70,6 +77,25 @@ The individual plans define the exact slice scope and acceptance criteria.
 Migration versions are assigned against the merged history during implementation;
 new branches must include every prerequisite version. Planning does not reserve
 credentials, provision services or change the application's current runtime.
+
+Current local verification instructions: [single-instance recovery](../docs/local-recovery.md).
+Local evidence does not complete hosted rollout, browser acceptance, production backup/restore
+or distributed deployment gates. No new runtime service is needed for this slice.
+
+### Active work and remaining gates — 2026-10-22
+
+| Area | Local implementation / verification | Remaining work |
+|---|---|---|
+| 01–07 | Done | Environment-specific rollout acceptance |
+| 08A / 08C | Implemented and verified locally | Hosted/browser acceptance when staging is available |
+| 08B | Binding/download/lifecycle and lightweight processing implemented | Hosted acceptance; R2/scanner re-checks excluded by user request; ClamAV deferred |
+| 09A / Free operation | Observability, real-process restart and DB-path recovery verified | Hosted redeploy/cold-start/termination evidence; sustained capacity |
+| 09 local DB recovery | Backup/restore and explicit process-crash tooling with data/sequence comparison, uncommitted rollback and restored HTTP/WS checks | Production backup ownership, retention/PITR and DB/object reconciliation remain separate |
+| 09B–09D | Deferred | Explicit distributed scaling/provider decision before implementation |
+| [Deployment migrations](10-serverless-migrations.md) | Embedded startup migrations implemented; isolated clean/upgrade/restart/failure checks exist | Current hosted schema-specific rollout evidence |
+
+Continue local operation with `make verify-local-backup`; it creates only its own
+fixtures and preserves stopped data volumes. It does not provision a hosted service.
 
 ## Status values
 

@@ -27,10 +27,21 @@ is now included from develop. Its schema includes migration 000006 before 000007
 deployment order; testing and review/fix results are recorded in its plan.
 
 Phase 08 is in progress: 08A room search is implemented and verified locally;
-08B R2 attachment foundation is implemented with scanner/provider gates pending; 08C mentions/inbox is Done locally after PostgreSQL/race verification and review fixes. Phase 09 is Pending under the Render Free decision: 09A is Done locally;
+08B message attachment binding/download and lightweight processing are implemented;
+hosted file acceptance remains separate. R2/scanner re-verification is outside the
+current scope (2026-10-20), and ClamAV is deferred indefinitely.
+08C mentions/inbox is Done locally after PostgreSQL/race verification and review fixes. Phase 09 is Pending under the Render Free decision: 09A is Done locally;
 09B/09C and the multi-node 09D rollout are deferred. Single-instance staging
-verification remains follow-up work. Distributed contracts and capacity gates
+verification remains follow-up work. Local actual-process restart, inbox/history
+recovery and DB-path readiness recovery are covered by the
+[opt-in integration suite](../docs/local-recovery.md). Distributed contracts and capacity gates
 are preserved for an explicitly resumed scaling effort.
+
+The 2026-10-22 local follow-up also provides a separate, isolated logical
+backup/restore rehearsal (`make verify-local-backup`), including whole-table and
+sequence comparison and authenticated checks against the restored server.
+Production PITR/retention, DB/object reconciliation and hosted recovery remain
+deployment gates; this does not expand the distributed scope.
 
 ## Shared constraints
 
