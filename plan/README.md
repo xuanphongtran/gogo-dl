@@ -92,7 +92,7 @@ or distributed deployment gates. No new runtime service is needed for this slice
 | 09A / Free operation | Observability, real-process restart and DB-path recovery verified | Hosted redeploy/cold-start/termination evidence; sustained capacity |
 | 09 local DB recovery | Backup/restore and explicit process-crash tooling with data/sequence comparison, uncommitted rollback and restored HTTP/WS checks | Production backup ownership, retention/PITR and DB/object reconciliation remain separate |
 | 09B–09D | Deferred | Explicit distributed scaling/provider decision before implementation |
-| [Deployment migrations](10-serverless-migrations.md) | Embedded startup migrations implemented; isolated clean/upgrade/restart/failure checks exist | Current hosted schema-specific rollout evidence |
+| [Deployment migrations](10-serverless-migrations.md) | Embedded migrations plus actual-process DB/dirty-schema startup rejection and secret-safe diagnostics verified | Current hosted schema-specific rollout evidence |
 
 Continue local operation with `make verify-local-backup`; it creates only its own
 fixtures and preserves stopped data volumes. It does not provision a hosted service.

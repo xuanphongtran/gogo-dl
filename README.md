@@ -82,7 +82,7 @@ make deps
 ```bash
 make run          # with Air hot-reload if installed
 # or
-go run ./cmd/server/main.go
+go run ./cmd/server
 ```
 
 Server starts on `http://localhost:8080` by default.
@@ -91,6 +91,12 @@ files are embedded in the binary, so deployments need only the built executable
 and environment variables. `.env.local` is loaded locally; existing
 `configs/.env` is still supported, and process environment variables take
 precedence over both files. Never deploy `.env.local` or commit credentials.
+
+On startup failure, JSON logs include `failure_stage` and `failure_reason` without
+raw error details. For example, `database/connection_failed` identifies DB
+connectivity and `migrations/dirty_schema` identifies a failed migration state.
+See the [deployment guide](docs/deploy-render-neon.md) before attempting recovery;
+dirty schema state is never automatically cleared.
 
 For a Render Go Web Service backed by Neon, follow the
 [Render and Neon deployment guide](docs/deploy-render-neon.md). It covers the

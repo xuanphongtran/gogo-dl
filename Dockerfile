@@ -14,7 +14,7 @@ RUN go mod download
 # Copy source and build a statically-linked binary.
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -ldflags="-s -w" -o /app/bin/gogo-dl ./cmd/server/main.go
+    go build -ldflags="-s -w" -o /app/bin/gogo-dl ./cmd/server
 
 # ── Stage 2: Runtime ──────────────────────────────────────────────────────────
 FROM scratch

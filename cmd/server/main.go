@@ -11,7 +11,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -47,7 +46,7 @@ import (
 func main() {
 	log.Logger = zerolog.New(os.Stderr).With().Timestamp().Logger()
 	if err := run(); err != nil {
-		log.Error().Msg("server stopped after startup or listener failure")
+		logFailure(log.Logger, err)
 		os.Exit(1)
 	}
 }
@@ -58,7 +57,7 @@ func run() error {
 	// ── 2. Config ─────────────────────────────────────────────────────────────
 	cfg, err := config.Load(".env.local", "configs/.env")
 	if err != nil {
-		return fmt.Errorf("startup: config: %w", err)
+		return newFailure(stageConfig, err)
 	}
 
 	if cfg.IsProd() {
@@ -81,7 +80,7 @@ func run() error {
 	db, err := database.ConnectContext(connectCtx, cfg.MigrationURL())
 	cancelConnect()
 	if err != nil {
-		return fmt.Errorf("startup: database: %w", err)
+		return newFailure(stageDatabase, err)
 	}
 	var hub *ws.Hub
 	var srv *httpserver.Server
@@ -164,20 +163,20 @@ func run() error {
 	err = database.MigrateUpEmbedded(migrationCtx, db.DB.DB)
 	cancelMigration()
 	if err != nil {
-		return fmt.Errorf("startup: migrations: %w", err)
+		return newFailure(stageMigrations, err)
 	}
 	log.Info().Msg("migrations up to date")
 	metrics := telemetry.NewMetrics(db.DB.DB)
 	observability, err = telemetry.New(signalCtx, telemetry.Options{ServiceName: cfg.OTELServiceName, Endpoint: cfg.OTLPEndpoint, Headers: cfg.OTLPHeaders, SampleRatio: cfg.TraceSampleRatio}, metrics)
 	if err != nil {
-		return fmt.Errorf("startup: telemetry: %w", err)
+		return newFailure(stageTelemetry, err)
 	}
 	otel.SetTracerProvider(observability.Provider)
 	// SDK errors may contain provider response text or credentials: never log them.
 	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(error) { log.Warn().Msg("telemetry: export failed") }))
 	if cfg.MetricsEnabled {
 		if err := observability.StartMetrics(cfg.MetricsListenAddr); err != nil {
-			return err
+			return newFailure(stageMetrics, err)
 		}
 	}
 
@@ -212,13 +211,13 @@ func run() error {
 	if cfg.R2AccountID != "" {
 		r2Store, storeErr := attachment.NewR2(cfg.R2AccountID, cfg.R2Bucket, cfg.R2AccessKeyID, cfg.R2SecretAccessKey)
 		if storeErr != nil {
-			return fmt.Errorf("startup: attachment storage: %w", storeErr)
+			return newFailure(stageStorage, storeErr)
 		}
 		objectStore = r2Store
 		if cfg.AttachmentScanEnabled {
 			scanner, scanErr := scannerapi.New(cfg.ScannerURL, cfg.ScannerAPIToken)
 			if scanErr != nil {
-				return fmt.Errorf("startup: scanner: %w", scanErr)
+				return newFailure(stageScanner, scanErr)
 			}
 			scanCtx, cancelScan := context.WithCancel(signalCtx)
 			stopScan = cancelScan
@@ -260,7 +259,7 @@ func run() error {
 	select {
 	case err := <-serverErr:
 		if err != nil {
-			return fmt.Errorf("server: listen: %w", err)
+			return newFailure(stageHTTP, err)
 		}
 	case <-signalCtx.Done():
 		log.Info().Msg("shutdown signal received")

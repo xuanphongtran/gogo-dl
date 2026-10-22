@@ -49,6 +49,7 @@ await_database() {
   done
 }
 await_database
+docker exec "$database_container" createdb -U postgres startup_failure_test
 
 run_go() {
   docker run --rm --network "container:$database_container" \
@@ -57,10 +58,11 @@ run_go() {
     -e CGO_ENABLED=1 -e RECOVERY_SERVER_BINARY=/artifacts/server \
     -e 'RECOVERY_DATABASE_URL=postgres://postgres:local-recovery-fixture-only@127.0.0.1:5432/source_test?sslmode=disable' \
     -e 'RECOVERY_RESTORED_DATABASE_URL=postgres://postgres:local-recovery-fixture-only@127.0.0.1:5432/restored_test?sslmode=disable' \
+    -e 'RECOVERY_STARTUP_DATABASE_URL=postgres://postgres:local-recovery-fixture-only@127.0.0.1:5432/startup_failure_test?sslmode=disable' \
     golang:1.23 "$@"
 }
 
-run_go sh -c 'go build -buildvcs=false -race -o /artifacts/server ./cmd/server && go test -buildvcs=false -tags=integration -race -v -count=1 -timeout=120s -run "TestServerProcessRecovery|TestRecoveryURLSafety" ./integration/recovery'
+run_go sh -c 'go build -buildvcs=false -race -o /artifacts/server ./cmd/server && go test -buildvcs=false -tags=integration -race -v -count=1 -timeout=120s -run "TestServerProcessRecovery|TestRecoveryURLSafety|TestStartupFailureDoesNotServe" ./integration/recovery'
 
 # Source application has stopped. Never dump a personal DB or restore over one.
 started_at=$SECONDS
