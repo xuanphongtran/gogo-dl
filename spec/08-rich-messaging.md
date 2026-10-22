@@ -1,16 +1,13 @@
-> Current 08B processing policy: [lightweight sanitizer](08b-lightweight-processing.md)
-> defaults to JPEG/PNG rewriting and strict TXT, with optional ClamAV through v2.
-> PDF/Office and public upload activation remain out of scope for this slice.
-
 # 08 — Search, Attachments, and Notifications Specification
 
 **Priority:** P2
 
-**Status:** 08A/08C implemented; 08B lightweight processing verified, message binding/download implemented locally in schema13; hosted binding/download rollout pending. ClamAV deferred indefinitely.
+**Status:** implemented through schema13. Current release/deployment work is in
+[pending](../plan/pending.md). ClamAV is deferred indefinitely.
 
 **Execution plan:** [Phase 8 plan](../plan/08-rich-messaging.md)
 
-**Depends on:** 05 membership; [06 lifecycle integration](../plan/06-message-lifecycle.md); [07 read state](./07-presence-read-state.md)
+**Depends on:** 05 membership; [06 lifecycle integration](06-message-lifecycle.md); [07 read state](./07-presence-read-state.md)
 
 ## 1. Outcome and boundaries
 
@@ -18,9 +15,8 @@ Members can find messages in their rooms, attach verified private files and rece
 durable mention notifications while offline. PostgreSQL remains authoritative;
 object storage holds file bytes. Existing text sends and ID-based history remain
 compatible. Section 3 (08A) is implemented with local verification recorded in
-the execution plan; the remaining attachment provider gates are future work while
-the notification section is implemented and verified locally. Schema13 completion
-is specified separately in the linked extension.
+the verification record; attachments and notifications are also implemented.
+The binding and processing extensions below define the current schema13 contract.
 
 Deliver three slices: **08A search**, **08B attachments**, **08C mentions/inbox**.
 Phase 6 application code is now integrated from `develop`, including its
@@ -28,14 +24,14 @@ revision/tombstone behavior. Phase 5 verification completed locally on 2026-10-1
 its plan records the completed authorization/transaction checks. Provider proofs can begin independently;
 release requires the relevant integration and verification gates.
 
-Out of scope: global/semantic search, relevance pagination, attachment-only messages,
+Out of scope: global/semantic search, relevance pagination,
 file-content indexing, rich HTML, link previews, public file URLs, email/push
 delivery and public read receipts. External channels require a later provider
 decision; the in-app worker establishes a real delivery boundary.
 
-## 2. Proposed defaults and trust boundaries
+## 2. Current defaults and trust boundaries
 
-| Area | Proposed default |
+| Area | Current default |
 | --- | --- |
 | Search | PostgreSQL full-text, `simple` dictionary, AND terms, newest ID first |
 | Upload | Private Cloudflare R2; unique create-only quarantine keys; exact-byte scan and promotion |
@@ -46,10 +42,10 @@ decision; the in-app worker establishes a real delivery boundary.
 | Retention | Unattached clean file 24 h; inbox 30 days; bound file until deletion |
 | Send retry key | Required for attachment/mention sends, retained at least 24 h |
 
-These are initial design choices, not measured capacity or provisioned services.
-Provider ADR must verify exact APIs, conditional-write immutability, size constraints,
-checksums, TLS, signed response headers, object deletion, scanner integration,
-cost and retention. Disable attachments if a mandatory capability is unavailable.
+These bounds are not measured capacity guarantees. Upload admission requires
+configured dependencies and explicit opt-in. Keep objects private, conditional
+writes immutable and processing fail-closed; operational ownership and deployment
+evidence are tracked separately in the pending list.
 
 Client controls content, query, filenames, declared size/type, IDs and retry keys.
 Services derive identity, membership, object keys, scan state, versions and recipients.
@@ -97,7 +93,8 @@ Migrations9/11/12 provide reservation, cleanup, processing and artifact metadata
 Admission remains opt-in with configured R2, processing and
 `ATTACHMENT_UPLOAD_ENABLED=true`. Lightweight JPEG/PNG rewriting and strict TXT
 are Done; ClamAV is deferred indefinitely, not a release gate. Local real R2
-processing/final GET is verified; hosted schema13 end-to-end smoke is pending.
+processing/final GET has local evidence. Hosted operation evidence is separate;
+no further R2/scanner checks are scheduled by the current scope decision.
 
 Schema13 retains opaque object identity across room/message/account cascades and
 reconciles attached orphans. Live bindings do not expire at the ready TTL. Stop
@@ -153,13 +150,14 @@ expiry. A ready file cannot be claimed twice; cancellation of attached files is 
 
 1. Worker pins an immutable quarantine **object key and ETag**, checks actual length/SHA-256/type from
    bytes. HEAD/client metadata alone cannot establish type or cleanliness. Strictly
-   decode allowed images, reject invalid/excessive dimensions (proposed 25 megapixels)
-   with bounded decoder memory; reject invalid UTF-8/binary text.
+   decode allowed images with bounded input/decoder memory; sanitize-v1 accepts
+   at most4M pixels. Reject invalid UTF-8/binary text. See the processing policy
+   for the stricter service limits and transformed-output identity.
 2. Scanner processes those exact bytes. Unknown verdict, timeout/outage or unverifiable
    response fails closed: never downloadable. Bounded retries end in quarantine/
    rejection and alert. Scratch app image has no antivirus binary; use a separate
    scanner rather than executing a shell command.
-3. Promote **those exact verified bytes** to a unique server-only private final key
+3. Promote **the independently verified processed output bytes** to a server-only private final key
    using create-only writes; verify destination/checksum, then mark ready with final identity. Retries never
    silently overwrite attached bytes.
 4. Failed DB finalization after promotion is reconciled/cleaned. No broad provider
@@ -170,24 +168,23 @@ Cloudflare R2 has no S3 bucket versioning API. Each reservation uses a unique
 and Content-Length. Reuse must fail after the first successful create. Never delete
 and recreate this key while upload credentials remain valid. ETag is a consistency
 condition, not a SHA-256 proof: scan actual bytes and verify the declared checksum.
-Future promotion must consume the verified bytes and conditionally create a distinct
+Promotion consumes verified processed output and conditionally creates a distinct
 final key; no unqualified copy of a mutable/latest source is acceptable.
 
-Real R2 tests must prove concurrent create-only PUT, signed header enforcement,
-size limits, CORS/browser upload, in-flight write completion and conditional reads.
-Local create-only/type/read/promotion checks have passed. Browser CORS and
-hosted late-write/grace checks remain rollout verification, while quarantine
-admission is explicitly opt-in at the user's request.
+Create-only PUT, signed headers, conditional reads and processing have local
+provider evidence. Frontend completion is user-confirmed. Provider re-testing is
+excluded; retained operational late-write/grace and storage ownership notes are
+listed separately in pending work. Admission remains explicitly opt-in.
 [Cloudflare R2 S3 compatibility](https://developers.cloudflare.com/r2/api/s3/api/),
 [R2 presigned URLs](https://developers.cloudflare.com/r2/api/s3/presigned-urls/)
 
 Logical quotas include reservations and clean/attached files. Serialize new
 reservations using room/membership locks followed by user then room advisory quota
-locks. Retain cancelled reservations in quota through upload expiry plus a proposed
+locks. Retain cancelled reservations in quota through upload expiry plus a
 10-minute grace, and release only after provider deletion and fenced database
-acknowledgement. Current foundation caps each user at 100 MiB and 10 outstanding
-reservations; room cap is 10 GiB. Physical-storage alerts/lifecycle rules and proof
-of the grace period remain deployment gates.
+acknowledgement. Current quotas are100MiB/10 pending-unattached reservations per user,
+1GiB total per user and10GiB per room. Operational limitations around physical storage and late writes are recorded
+only in the pending list; this spec does not reopen excluded provider tests.
 
 Unattached ready files expire after 24 h. Message deletion immediately hides metadata
 and atomically writes cleanup intent; private deletion retries until confirmed.
@@ -203,7 +200,8 @@ Extend `POST /api/v1/rooms/:id/messages` additively:
 {"content":"Please review this","attachment_ids":[123],"mention_user_ids":[7]}
 ```
 
-Content stays required, trimmed and ≤ 4000 UTF-8 bytes. Arrays default empty with
+Content is trimmed and ≤4000 UTF-8 bytes; it may be blank when files are attached,
+and must be nonblank for text-only sends. Arrays default empty with
 distinct positive IDs and configured maxima. Mention IDs are authoritative, not
 display names or `@everyone`. Recipients must currently belong to the room; self
 mention is stored without notification. Invalid recipient is generic 400 without
@@ -281,12 +279,11 @@ Create immutable `domain_outbox` reused by Phase 9: `event_id` UUID,
 and bounded typed references. Mentions snapshot recipient IDs/generations, not text.
 Server IDs/versions cannot be supplied by client commands.
 
-Message create/edit/delete and membership control share room aggregate; allocate
-sequence under room/counter lock in the mutation transaction. Revision is separate.
-Personal read/notification events use user aggregates. Invitations use recipient
-ownership and invitation revision/state, including before membership exists.
-IDs/timestamps do not establish commit order; no cross-aggregate order or change
-to message ID pagination. Room counter lock order/choke point needs measurement.
+Implemented message lifecycle/mention/notification intents use aggregate counters
+and typed references. IDs/timestamps do not establish cross-aggregate order or
+change message-ID pagination. A complete set of membership/account/read-state
+control producers and cross-node ordering barriers belongs to future09B/09C;
+its presence must not be inferred from an outbox table or lifecycle intent.
 
 Independent purpose delivery/progress records serve notification, object cleanup
 and future broker relay: do not destructively compete for one row. Bounded
@@ -295,11 +292,9 @@ recover abandoned work. Cleanup tombstones retain opaque provider object identit
 needed after cascades, server-only; other intents carry references only. No provider
 I/O in claim transactions or Hub loop. Failed intent insertion rolls back mutation.
 
-Relay requires exact resource revision at original sequence. If later edits/deletion
-make payload unavailable, transport a content-free terminal-skip progress marker,
-advance ordering and recover via authorized current state. Never substitute newer
-content at old sequence; it could precede revocation. Notification workers use current
-generation and no copied content. Retention respects every purpose's recovery horizon.
+There is no broker relay in this release. Broker delivery rows remain pending.
+Future relay hydration/sequence/fencing rules are in the distributed spec.
+Notification workers validate current generation and do not copy message text.
 Processing is at least once, not exactly-once browser delivery.
 
 New migration pairs cover vector/index, membership generation/uniqueness,
@@ -308,32 +303,21 @@ counters. Assign numbers after integrated 000007; never edit 000006/000007 or
 reserve conflicting versions here. Review explicit columns, constraints, FK actions
 and actual query indexes. Backfills/uniqueness precede dependent writers.
 
-## 9. Operations, verification and release gates
+## 9. Operation and release boundary
 
-Proposed settings: `ATTACHMENTS_ENABLED=false`, endpoint/region/private buckets/
-credentials, scanner endpoint/deadline/credentials, type/size/quotas, URL TTLs,
-cleanup grace, bounded worker batch/concurrency/lease/retry and retention. Mention
-workers have an explicit enable gate. Enabled features require valid dependencies;
-disabled upload admission returns 503 and issues no credentials, while existing
-authorized retrieval and cleanup continue. Add Config validation/tests,
-`.env.example`, container wiring and README with implementation. Redact credentials,
-URLs/filenames; metric labels are bounded kind/state/result, not user/room/key IDs.
+`ATTACHMENT_UPLOAD_ENABLED` and `ATTACHMENT_SCAN_ENABLED` default false. Enabling
+uploads requires all R2 settings and processor URL/token. Disabled admission
+returns503 without issuing credentials; already-authorized retrieval/cleanup
+remain available when their dependencies are configured. Notification workers run
+inside the backend process and resume eligible jobs on restart.
 
-ADR includes retention/recovery/ownership and pinned-version malware overwrite
-proof. Isolated PostgreSQL/provider tests cover clean/upgrade schema, rollback,
-lock order, claims, generation reset and cleanup. Fake scanner/store tests aid
-deterministic failures; they do not satisfy the actual scan/provider gate.
+Monitor bounded job states/retry exhaustion, orphan quota and physical storage.
+Never log bearer URLs, credentials, file bodies or unbounded sensitive labels.
+Stop new admission on dependency failure; do not force readiness or mark unknown
+processing output ready. Keep compatible retrieval/cleanup during rollback and
+never run production down migrations to bypass the guards.
 
-- [ ] Search auth, deletion/edit indexing, UTF-8/cursor behavior verified.
-- [ ] Upload overwrite/version/size/type/hash/scan fail-closed proofs pass.
-- [ ] Quotas, duplicate completion/claims, cancellation/expiry/orphans/GC pass.
-- [ ] Send retries and rollback preserve all-or-nothing state.
-- [ ] Mention generation/preferences/leave races, inbox ownership/retention pass.
-- [ ] Independent outbox purposes, fenced leases/retries/crash recovery pass.
-- [ ] Race/vet/build and affected Swagger/AsyncAPI checks pass where integrated.
-- [ ] Provider, retention, rollout/rollback and remaining risks reviewed.
-
-Release search first, upload admission off until store/scanner proof, then mentions
-with staged workers. Rollback stops new admission; retain retrieval, cleanup,
-reservations and intents until drained. No production down migrations. Drafting
-satisfies none of these implementation checkboxes.
+[Verification evidence](../docs/verification.md) and the
+[separate pending list](../plan/pending.md) own current execution/rollout status.
+Frontend completion is user-confirmed; future broker contracts are not release
+functionality. No provider/scanner re-testing is scheduled in this cleanup.

@@ -1,6 +1,6 @@
 # 01 — Test Foundation Specification
 
-**Related plan:** [plan/01-test-foundation.md](../plan/01-test-foundation.md)  
+**Roadmap:** [implementation status](../plan/README.md)
 **Status:** Done
 **Priority:** P0
 

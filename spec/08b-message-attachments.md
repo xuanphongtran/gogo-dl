@@ -1,9 +1,8 @@
 # 08B completion: message bindings and authorized downloads
 
-User authorized continuing the agreed 08B remainder. Lightweight processor is Done;
-ClamAV is deferred indefinitely and never a release gate. Reuse R2/v2 processing,
-no new service/dependency. Implement schema13, atomic sends, lifecycle, signed
-download, REST/WS metadata and tests. No hosted deploy/commit requested.
+**Status:** implemented in schema13. Lightweight processing is supported;
+ClamAV is deferred indefinitely and is not a release gate. Current rollout and
+verification work is tracked in [pending](../plan/pending.md).
 
 ## Contract
 

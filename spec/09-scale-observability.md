@@ -1,12 +1,13 @@
 # 09 — Scale and Observability Specification
 
-**Status:** Pending — 09A Done; distributed 09B–09D deferred for Render Free
+**Status:** 09A implemented; 09B–09D are future design, not implemented.
+**Release scope:** one instance. [Pending work](../plan/pending.md) is separate.
 
 **Priority:** P2
 
 **Execution plan:** [Phase 9 plan](../plan/09-scale-observability.md)
 
-**Depends on:** 01–05; Phase 7 for shared presence/read state; Phase 8 outbox for durable relay; [Phase 6 integration](../plan/06-message-lifecycle.md) for lifecycle convergence
+**Depends on:** 01–05; Phase 7 for shared presence/read state; Phase 8 outbox for durable relay; [Phase 6 integration](06-message-lifecycle.md) for lifecycle convergence
 
 ## 1. Outcome and boundaries
 
@@ -61,8 +62,9 @@ the authorization/transaction fixes and remaining staging boundaries. Phase 6/7 
 from `develop`; distributed lifecycle producer verification remains a 09B gate.
 
 09A implementation and local verification are complete. Phase 8 outbox and 08C
-are integrated; 08B scanner/provider gates remain pending. Distributed contracts below remain target behavior for
-09B–09D; provider rollout and sustained SLO evidence are separate release gates.
+are integrated; schema13 attachments/lightweight processing are implemented.
+Provider re-testing is excluded by current scope. Distributed contracts below are
+future target behavior for09B–09D; they are not runtime/release guarantees.
 
 ## 3. Future distributed operational baseline
 

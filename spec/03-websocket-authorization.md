@@ -1,6 +1,6 @@
 # 03 — WebSocket Authorization and Protocol Safety Specification
 
-**Related plan:** [plan/03-websocket-authorization.md](../plan/03-websocket-authorization.md)  
+**Roadmap:** [implementation status](../plan/README.md)
 **Status:** Done
 **Priority:** P0
 

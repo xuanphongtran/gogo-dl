@@ -1,6 +1,6 @@
 # 02 — Data Integrity and Transactions Specification
 
-**Related plan:** [plan/02-data-integrity.md](../plan/02-data-integrity.md)  
+**Roadmap:** [implementation status](../plan/README.md)
 **Status:** Done
 **Priority:** P0
 

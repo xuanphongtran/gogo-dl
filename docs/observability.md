@@ -192,6 +192,6 @@ independently. Earlier roadmap phases retain their own integration gates.
 
 ## Local verification evidence
 
-See [the Phase 9 plan](../plan/09-scale-observability.md) for executed commands and
-measured local baseline. Local results establish regression protection and smoke
+See [verification evidence](verification.md) for executed commands and
+the brief local baseline; [pending work](../plan/pending.md) tracks operation gates. Local results establish regression protection and smoke
 behavior; production capacity, sustained SLOs and provider deployment are pending.

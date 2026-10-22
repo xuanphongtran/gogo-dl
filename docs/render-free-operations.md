@@ -163,8 +163,8 @@ ORDER BY purpose, last_error;
 COMMIT;
 ```
 
-The [existing local baseline](../plan/09-scale-observability.md#one-process-local-smoke-baseline)
-records one-process test workload, resources and DB pool settings. It establishes
+The [recorded local smoke](verification.md#single-instance-smoke)
+describes a brief one-process read workload and its limits. It establishes
 neither Render Free capacity nor a cold-start budget. For a staging capacity
 observation, agree a bounded workload first and record room/connection counts,
 request rate, HTTP/WS latency, errors/drops, memory, pool wait and job lag. Stop at
