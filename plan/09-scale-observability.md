@@ -10,7 +10,94 @@
 
 ## 1. Acceptance and execution order
 
-### Deployment decision — 2026-10-05
+### Current local follow-up — 2026-10-20
+
+Render quota is exhausted, so the active environment is local. R2/scanner
+re-verification is explicitly excluded; ClamAV remains indefinitely deferred.
+09B–09D remain deferred by the existing one-instance decision. This follow-up
+adds opt-in verification, not a new runtime service or distributed implementation.
+
+- [x] Run the actual production-configured server binary against a new isolated
+      PostgreSQL16 database; verify clean embedded schema13 startup/restarts.
+- [x] Verify SIGTERM close1001 and successful bounded exit; reconnect/rejoin with
+      the original token; recover canonical history and one mention inbox effect.
+      A preference-row barrier prevents pre-stop notification delivery; only
+      fixture lease/backoff timestamps advance after shutdown.
+- [x] Replay the message/idempotency key after restart and retain its original ID.
+- [x] Deny the removed member on both REST and WS after another process restart.
+- [x] Disconnect the process's DB TCP path without stopping PostgreSQL. Readiness
+      becomes503 while liveness/legacy health remain200; reconnect restores
+      readiness/history. Future broker deliveries remain pending.
+- [x] Record a bounded 200-read/four-client history smoke baseline and provide
+      repeatable [local instructions](../docs/local-recovery.md).
+
+Verification: Docker Go1.23 with GCC, race-enabled actual server and harness;
+`go test -buildvcs=false -tags=integration -race -v -count=1 -timeout=120s ./integration/recovery`
+passed. Final post-review baseline: 266ms total for 200 authorized history reads,
+p95 14.789ms; all three SIGTERM exits were 1016ms (includes race runtime exit
+delay). Earlier passes measured 245–280ms / p95 9.611–12.260ms.
+`go vet -buildvcs=false -tags=integration ./...`,
+`go test -buildvcs=false -race -count=1 -timeout=180s ./...` and `make build`
+passed. The ordinary full suite had no `TEST_DATABASE_URL`, so its existing DB
+tests skipped; the new process suite did run against its separate recovery DB.
+Host Go and golangci-lint are unavailable.
+
+Independent review found that lib/pq URL query overrides could make the empty-DB
+guard and child process connect to different targets. Seven negative regression
+cases failed before the fix (host/port/DB overrides, duplicate/malformed query,
+keyword-DSN password/database injection). The harness now rejects query overrides
+and unsafe keyword separators; all URL safety cases, the DB-backed process suite,
+tagged vet and ordinary full race suite passed after the fix. Production
+configuration behavior is unchanged.
+
+The bounded local workload is neither saturation/capacity evidence nor a Render
+SLO. PostgreSQL crash, backup/restore, browser reconnect, Render termination
+window and spin-down/wake remain unverified; the staging checklist below stays
+open. The FE backend at8080 and its database were not restarted or modified.
+
+### Local backup/restore follow-up — 2026-10-22
+
+Next active gap after process recovery: a reproducible logical backup/restore
+rehearsal. R2/scanner and distributed implementation remain outside this slice.
+The existing uncommitted local recovery work is retained on the current feature
+branch; this follow-up changes verification/docs only.
+
+- `make verify-local-backup` creates a uniquely named, network-isolated
+  PostgreSQL16 container with a persistent named volume. The FE DB is untouched.
+- The actual source server creates two users/messages, an active inbox effect,
+  a send retry key and a removed member; it exits before the snapshot.
+- `pg_dump` custom format is restored to a new empty DB with fail-fast,
+  single-transaction `pg_restore`. All public table row counts/digests and
+  sequence values/called states must match before restored application startup.
+- The restored binary must become ready, authenticate against restored hashes,
+  retain history/inbox/retry identity and deny removed-member REST/WS access.
+- Fixtures/archive are retained in a stopped container/volume. No down migration,
+  truncate, drop, existing DB restore or volume deletion is performed.
+
+Review identified a startup race: socket-only `pg_isready` can observe the image's
+temporary initialization server. The script now probes TCP127.0.0.1:5432, matching
+the Go harness. The shared environment builder keeps source JWT secrets stable
+across restarts; a restored process gets its own fresh test secrets and logs in.
+
+Verification observed after review: `make verify-local-backup` passed with
+Docker Go1.23/PostgreSQL16, race-enabled source/restored binaries and harness.
+Every table/sequence fingerprint matched; source process recovery took 13.35s
+and restored-server checks 6.94s including bcrypt/race overhead. Dump and restore
+each reported0s at the script's whole-second resolution (not instantaneous or a
+production recovery-time measure). `bash -n scripts/verify-local-backup.sh`,
+`go vet -buildvcs=false -tags=integration ./...`,
+`go test -buildvcs=false -tags=integration -race -count=1 -timeout=180s ./...`,
+`make build` and `git diff --check` passed. The full suite had no
+`TEST_DATABASE_URL`; existing DB tests skipped, while the separate rehearsal
+actually exercised source/restore PostgreSQL databases. golangci-lint is absent.
+The owned PostgreSQL fixture was stopped with its data volume/dump retained.
+
+This closes the **local logical DB restore rehearsal** gap only. A quiescent tiny
+fixture does not establish production RPO/RTO, PostgreSQL crash recovery, Neon PITR,
+attachment/object consistency or hosted rollout. The staging/distributed checklists
+remain separate. Instructions: [local recovery](../docs/local-recovery.md#isolated-backuprestore-rehearsal).
+
+### Deployment decision — 2026-10-05 (historical scope)
 
 The user keeps Render Free. The active deployment is one Go Web Service instance
 with Neon PostgreSQL, local WebSocket fanout/presence/typing/limits and the existing

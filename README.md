@@ -399,6 +399,11 @@ make clean           # remove ./bin
 
 ## Testing
 
+For an isolated actual-process restart and PostgreSQL backup/restore rehearsal,
+run `make verify-local-backup` with Docker. It creates and retains its own test
+DB/volume, without changing the FE database. See the
+[local recovery guide](docs/local-recovery.md) for scope, assertions and limits.
+
 Unit and WebSocket tests run without external services. PostgreSQL integration tests are enabled only when TEST_DATABASE_URL points to an isolated disposable database; they never load configs/.env.
 
     TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/gogo_dl_test?sslmode=disable go test -race -count=1 ./...

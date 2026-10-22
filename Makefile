@@ -14,7 +14,7 @@ MIGRATE_URL ?= $(shell grep DB_ $(ENV_FILE) 2>/dev/null | \
 MIGRATIONS_DIR := migrations
 
 # ── Phony targets ──────────────────────────────────────────────────────────────
-.PHONY: all run build clean test lint docs docs-asyncapi smoke \
+.PHONY: all run build clean test lint docs docs-asyncapi smoke verify-local-backup \
         migrate-up migrate-down migrate-create \
         deps tidy docker-up docker-down
 
@@ -58,6 +58,10 @@ test:
 ## smoke: Run a single deployment check (SMOKE_ARGS='-url https://service.onrender.com')
 smoke:
 	go run ./cmd/smoke $(SMOKE_ARGS)
+
+## verify-local-backup: Rehearse isolated PostgreSQL backup/restore using Docker
+verify-local-backup:
+	bash scripts/verify-local-backup.sh
 
 ## lint: Run golangci-lint (install: https://golangci-lint.run/usage/install/)
 lint:

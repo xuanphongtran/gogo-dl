@@ -1,5 +1,15 @@
 # Render Free operation checks
 
+When Render quota is exhausted, use the isolated
+[local process recovery suite](local-recovery.md) to verify restart, durable
+history/inbox, current membership and DB-path readiness recovery. Its results do
+not close the hosted redeploy/cold-start gates below.
+
+`make verify-local-backup` additionally rehearses a quiescent local logical
+backup/restore into a new test DB, comparing every table/sequence before
+authenticated HTTP/WS checks. It does not verify Neon backup/PITR or object-store
+consistency and must not be used to overwrite an existing application database.
+
 Run one Go Web Service instance with Neon PostgreSQL. Local Hub state and limits
 match this topology; distributed 09B–09D remain deferred. The application workers
 run only while the web process runs. Spin-down, cold starts and worker lag are
